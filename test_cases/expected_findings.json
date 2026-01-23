@@ -1,0 +1,771 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "description": "Ground truth findings for evaluating candidate implementations",
+    "notes": "Candidates are NOT expected to find every single issue. This is a comprehensive list for evaluation purposes."
+  },
+  "files": {
+    "sql_injection.py": {
+      "expected_findings": [
+        {
+          "id": "sql_injection_1",
+          "type": "security",
+          "severity": "critical",
+          "category": "SQL Injection",
+          "title": "SQL Injection in authenticate()",
+          "line_start": 42,
+          "line_end": 43,
+          "description": "User input directly concatenated into SQL query without parameterization",
+          "required": true
+        },
+        {
+          "id": "sql_injection_2",
+          "type": "security",
+          "severity": "critical",
+          "category": "SQL Injection",
+          "title": "SQL Injection in get_user_by_id()",
+          "line_start": 55,
+          "line_end": 56,
+          "description": "User-supplied user_id directly in query string",
+          "required": true
+        },
+        {
+          "id": "sql_injection_3",
+          "type": "security",
+          "severity": "critical",
+          "category": "SQL Injection",
+          "title": "SQL Injection in search_users() LIKE clause",
+          "line_start": 67,
+          "line_end": 68,
+          "description": "Search term directly in LIKE clause",
+          "required": true
+        },
+        {
+          "id": "sql_injection_4",
+          "type": "security",
+          "severity": "critical",
+          "category": "SQL Injection",
+          "title": "SQL Injection in update_user_role()",
+          "line_start": 75,
+          "line_end": 76,
+          "description": "new_role and user_id directly in UPDATE statement",
+          "required": false
+        },
+        {
+          "id": "sql_injection_5",
+          "type": "security",
+          "severity": "critical",
+          "category": "SQL Injection",
+          "title": "SQL Injection in delete_user()",
+          "line_start": 83,
+          "line_end": 84,
+          "description": "Username directly in DELETE statement",
+          "required": false
+        },
+        {
+          "id": "weak_hash_1",
+          "type": "security",
+          "severity": "high",
+          "category": "Weak Cryptography",
+          "title": "MD5 used for password hashing",
+          "line_start": 38,
+          "line_end": 38,
+          "description": "MD5 is cryptographically broken, should use bcrypt/argon2",
+          "required": true
+        }
+      ],
+      "total_security": 6,
+      "total_bugs": 0,
+      "minimum_required": 4
+    },
+    "null_reference.py": {
+      "expected_findings": [
+        {
+          "id": "null_ref_1",
+          "type": "bug",
+          "severity": "high",
+          "category": "Null Reference",
+          "title": "NoneType error in __init__ config access",
+          "line_start": 23,
+          "line_end": 24,
+          "description": "self.config could be None, calling .get() will crash",
+          "required": true
+        },
+        {
+          "id": "null_ref_2",
+          "type": "bug",
+          "severity": "high",
+          "category": "Null Reference",
+          "title": "NoneType error on email.lower()",
+          "line_start": 33,
+          "line_end": 33,
+          "description": "user.email could be None",
+          "required": true
+        },
+        {
+          "id": "null_ref_3",
+          "type": "bug",
+          "severity": "high",
+          "category": "Null Reference",
+          "title": "NoneType error accessing metadata['preferences']",
+          "line_start": 35,
+          "line_end": 35,
+          "description": "user.metadata could be None",
+          "required": true
+        },
+        {
+          "id": "null_ref_4",
+          "type": "bug",
+          "severity": "high",
+          "category": "Null Reference",
+          "title": "NoneType error on created_at.strftime()",
+          "line_start": 39,
+          "line_end": 39,
+          "description": "user.created_at could be None",
+          "required": true
+        },
+        {
+          "id": "null_ref_5",
+          "type": "bug",
+          "severity": "medium",
+          "category": "Null Reference",
+          "title": "Chain of None dereferences in get_user_summary()",
+          "line_start": 56,
+          "line_end": 59,
+          "description": "metadata, location could all be None",
+          "required": false
+        },
+        {
+          "id": "null_ref_6",
+          "type": "bug",
+          "severity": "high",
+          "category": "Null Reference",
+          "title": "NoneType error on secondary user access",
+          "line_start": 65,
+          "line_end": 68,
+          "description": "secondary parameter could be None",
+          "required": true
+        },
+        {
+          "id": "null_ref_7",
+          "type": "bug",
+          "severity": "high",
+          "category": "Null Reference",
+          "title": "NoneType error on email.strip()",
+          "line_start": 79,
+          "line_end": 79,
+          "description": "user.email could be None in extract_emails()",
+          "required": false
+        },
+        {
+          "id": "div_zero_1",
+          "type": "bug",
+          "severity": "medium",
+          "category": "Division by Zero",
+          "title": "Division by zero in calculate_stats()",
+          "line_start": 99,
+          "line_end": 101,
+          "description": "Empty users list causes division by zero",
+          "required": true
+        },
+        {
+          "id": "silent_except_1",
+          "type": "bug",
+          "severity": "medium",
+          "category": "Error Handling",
+          "title": "Silent exception swallowing in process_batch()",
+          "line_start": 48,
+          "line_end": 50,
+          "description": "Exceptions caught but not logged or handled",
+          "required": false
+        },
+        {
+          "id": "null_ref_8",
+          "type": "bug",
+          "severity": "high",
+          "category": "Null Reference",
+          "title": "NoneType check wrong order in get_user_display_name()",
+          "line_start": 141,
+          "line_end": 145,
+          "description": "Should check if user is None before accessing user.name",
+          "required": true
+        }
+      ],
+      "total_security": 0,
+      "total_bugs": 10,
+      "minimum_required": 6
+    },
+    "command_injection.py": {
+      "expected_findings": [
+        {
+          "id": "cmd_inj_1",
+          "type": "security",
+          "severity": "critical",
+          "category": "Command Injection",
+          "title": "Command injection in ping_host() via os.system",
+          "line_start": 22,
+          "line_end": 23,
+          "description": "Unsanitized hostname in os.system() call",
+          "required": true
+        },
+        {
+          "id": "cmd_inj_2",
+          "type": "security",
+          "severity": "critical",
+          "category": "Command Injection",
+          "title": "Command injection in check_disk_usage() via shell=True",
+          "line_start": 28,
+          "line_end": 33,
+          "description": "Unsanitized path with shell=True",
+          "required": true
+        },
+        {
+          "id": "cmd_inj_3",
+          "type": "security",
+          "severity": "critical",
+          "category": "Command Injection",
+          "title": "Command injection in search_logs() grep",
+          "line_start": 40,
+          "line_end": 45,
+          "description": "Unsanitized pattern in grep command",
+          "required": true
+        },
+        {
+          "id": "cmd_inj_4",
+          "type": "security",
+          "severity": "critical",
+          "category": "Command Injection",
+          "title": "Command injection in compress_logs() via os.popen",
+          "line_start": 51,
+          "line_end": 52,
+          "description": "Unsanitized filename in gzip command",
+          "required": false
+        },
+        {
+          "id": "cmd_inj_5",
+          "type": "security",
+          "severity": "critical",
+          "category": "Command Injection",
+          "title": "Command injection in get_process_info()",
+          "line_start": 57,
+          "line_end": 58,
+          "description": "Unsanitized process_name in ps command",
+          "required": false
+        },
+        {
+          "id": "cmd_inj_6",
+          "type": "security",
+          "severity": "critical",
+          "category": "Command Injection",
+          "title": "Command injection in kill_process()",
+          "line_start": 65,
+          "line_end": 66,
+          "description": "PID not validated as integer",
+          "required": false
+        },
+        {
+          "id": "cmd_inj_7",
+          "type": "security",
+          "severity": "critical",
+          "category": "Command Injection",
+          "title": "Command injection in backup_database()",
+          "line_start": 73,
+          "line_end": 74,
+          "description": "Both db_name and output_path unsanitized",
+          "required": true
+        },
+        {
+          "id": "path_trav_1",
+          "type": "security",
+          "severity": "critical",
+          "category": "Path Traversal",
+          "title": "Path traversal in execute_maintenance_script()",
+          "line_start": 82,
+          "line_end": 84,
+          "description": "script_name could contain ../",
+          "required": true
+        },
+        {
+          "id": "path_trav_2",
+          "type": "security",
+          "severity": "high",
+          "category": "Path Traversal",
+          "title": "Path traversal in read_file()",
+          "line_start": 102,
+          "line_end": 105,
+          "description": "filename could traverse directories",
+          "required": true
+        },
+        {
+          "id": "path_trav_3",
+          "type": "security",
+          "severity": "high",
+          "category": "Path Traversal",
+          "title": "Path traversal in write_file()",
+          "line_start": 109,
+          "line_end": 113,
+          "description": "Can write to arbitrary paths",
+          "required": false
+        },
+        {
+          "id": "path_trav_4",
+          "type": "security",
+          "severity": "critical",
+          "category": "Path Traversal",
+          "title": "Path traversal in delete_file()",
+          "line_start": 117,
+          "line_end": 120,
+          "description": "Can delete system files",
+          "required": false
+        }
+      ],
+      "total_security": 11,
+      "total_bugs": 0,
+      "minimum_required": 6
+    },
+    "race_condition.py": {
+      "expected_findings": [
+        {
+          "id": "race_1",
+          "type": "bug",
+          "severity": "high",
+          "category": "Race Condition",
+          "title": "Race condition in deposit() - read-modify-write",
+          "line_start": 45,
+          "line_end": 49,
+          "description": "Balance read and write not atomic",
+          "required": true
+        },
+        {
+          "id": "race_2",
+          "type": "bug",
+          "severity": "high",
+          "category": "Race Condition",
+          "title": "Race condition in withdraw() - check-then-act",
+          "line_start": 58,
+          "line_end": 67,
+          "description": "Balance check and deduction not atomic",
+          "required": true
+        },
+        {
+          "id": "race_3",
+          "type": "bug",
+          "severity": "critical",
+          "category": "Race Condition",
+          "title": "Non-atomic transfer() - money can be lost",
+          "line_start": 71,
+          "line_end": 82,
+          "description": "Withdrawal and deposit not atomic, can lose money on failed deposit",
+          "required": true
+        },
+        {
+          "id": "race_4",
+          "type": "bug",
+          "severity": "medium",
+          "category": "Race Condition",
+          "title": "Race condition in _record_transaction()",
+          "line_start": 93,
+          "line_end": 93,
+          "description": "Appending to list without lock",
+          "required": false
+        },
+        {
+          "id": "race_5",
+          "type": "bug",
+          "severity": "medium",
+          "category": "Race Condition",
+          "title": "Iterating over mutable dict in get_total_balance()",
+          "line_start": 97,
+          "line_end": 100,
+          "description": "Dict could be modified during iteration",
+          "required": false
+        },
+        {
+          "id": "race_6",
+          "type": "bug",
+          "severity": "high",
+          "category": "Race Condition",
+          "title": "Race condition in InventoryManager.reserve()",
+          "line_start": 124,
+          "line_end": 131,
+          "description": "Check and reserve not atomic",
+          "required": true
+        },
+        {
+          "id": "race_7",
+          "type": "bug",
+          "severity": "high",
+          "category": "Race Condition",
+          "title": "Race condition in Counter.increment()",
+          "line_start": 166,
+          "line_end": 169,
+          "description": "Classic read-modify-write race condition",
+          "required": true
+        },
+        {
+          "id": "race_8",
+          "type": "bug",
+          "severity": "medium",
+          "category": "Race Condition",
+          "title": "Race condition on session_count",
+          "line_start": 189,
+          "line_end": 191,
+          "description": "session_count increment not atomic",
+          "required": false
+        },
+        {
+          "id": "race_9",
+          "type": "bug",
+          "severity": "high",
+          "category": "Race Condition",
+          "title": "Dict modification during iteration in cleanup_stale_sessions()",
+          "line_start": 205,
+          "line_end": 210,
+          "description": "Deleting from dict while iterating",
+          "required": true
+        }
+      ],
+      "total_security": 0,
+      "total_bugs": 9,
+      "minimum_required": 5
+    },
+    "insecure_deserialization.py": {
+      "expected_findings": [
+        {
+          "id": "deser_1",
+          "type": "security",
+          "severity": "critical",
+          "category": "Insecure Deserialization",
+          "title": "Pickle deserialization in get_session() - RCE",
+          "line_start": 37,
+          "line_end": 38,
+          "description": "pickle.loads on potentially untrusted data",
+          "required": true
+        },
+        {
+          "id": "deser_2",
+          "type": "security",
+          "severity": "critical",
+          "category": "Insecure Deserialization",
+          "title": "Pickle deserialization in import_session() - RCE",
+          "line_start": 56,
+          "line_end": 57,
+          "description": "Accepting serialized data from external source",
+          "required": true
+        },
+        {
+          "id": "deser_3",
+          "type": "security",
+          "severity": "critical",
+          "category": "Insecure Deserialization",
+          "title": "Pickle in CacheManager.get() - RCE",
+          "line_start": 85,
+          "line_end": 86,
+          "description": "Deserializing cached data that could be poisoned",
+          "required": true
+        },
+        {
+          "id": "deser_4",
+          "type": "security",
+          "severity": "critical",
+          "category": "Insecure Deserialization",
+          "title": "Pickle load_from_file() - RCE",
+          "line_start": 95,
+          "line_end": 96,
+          "description": "Loading pickle from file could execute code",
+          "required": false
+        },
+        {
+          "id": "deser_5",
+          "type": "security",
+          "severity": "critical",
+          "category": "Insecure Deserialization",
+          "title": "YAML unsafe load in load_yaml()",
+          "line_start": 114,
+          "line_end": 115,
+          "description": "yaml.FullLoader still allows some code execution",
+          "required": true
+        },
+        {
+          "id": "deser_6",
+          "type": "security",
+          "severity": "critical",
+          "category": "Insecure Deserialization",
+          "title": "YAML UnsafeLoader in load_yaml_string() - RCE",
+          "line_start": 119,
+          "line_end": 120,
+          "description": "UnsafeLoader allows arbitrary code execution",
+          "required": true
+        },
+        {
+          "id": "deser_7",
+          "type": "security",
+          "severity": "critical",
+          "category": "Insecure Deserialization",
+          "title": "User-controlled pickle in load_from_request() - RCE",
+          "line_start": 130,
+          "line_end": 131,
+          "description": "User can specify pickle format for deserialization",
+          "required": true
+        },
+        {
+          "id": "deser_8",
+          "type": "security",
+          "severity": "critical",
+          "category": "Insecure Deserialization",
+          "title": "Pickle from URL in load_from_url() - RCE",
+          "line_start": 156,
+          "line_end": 157,
+          "description": "Deserializing data from untrusted URL",
+          "required": true
+        },
+        {
+          "id": "deser_9",
+          "type": "security",
+          "severity": "high",
+          "category": "Insecure Deserialization",
+          "title": "Pickle in MessageQueue.consume()",
+          "line_start": 176,
+          "line_end": 177,
+          "description": "Deserializing queue messages",
+          "required": false
+        }
+      ],
+      "total_security": 9,
+      "total_bugs": 0,
+      "minimum_required": 6
+    },
+    "hardcoded_secrets.py": {
+      "expected_findings": [
+        {
+          "id": "secret_1",
+          "type": "security",
+          "severity": "critical",
+          "category": "Hardcoded Secrets",
+          "title": "Hardcoded API key",
+          "line_start": 13,
+          "line_end": 13,
+          "description": "API_KEY hardcoded in source",
+          "required": true
+        },
+        {
+          "id": "secret_2",
+          "type": "security",
+          "severity": "critical",
+          "category": "Hardcoded Secrets",
+          "title": "Hardcoded AWS credentials",
+          "line_start": 16,
+          "line_end": 17,
+          "description": "AWS_ACCESS_KEY and AWS_SECRET_KEY in source",
+          "required": true
+        },
+        {
+          "id": "secret_3",
+          "type": "security",
+          "severity": "critical",
+          "category": "Hardcoded Secrets",
+          "title": "Hardcoded JWT secret",
+          "line_start": 20,
+          "line_end": 20,
+          "description": "JWT_SECRET should be in environment",
+          "required": true
+        },
+        {
+          "id": "secret_4",
+          "type": "security",
+          "severity": "critical",
+          "category": "Hardcoded Secrets",
+          "title": "Hardcoded Stripe keys in Config class",
+          "line_start": 29,
+          "line_end": 30,
+          "description": "Live Stripe API key exposed",
+          "required": true
+        },
+        {
+          "id": "secret_5",
+          "type": "security",
+          "severity": "high",
+          "category": "Hardcoded Secrets",
+          "title": "Database connection string with password",
+          "line_start": 38,
+          "line_end": 39,
+          "description": "DATABASE_URL and REDIS_URL contain passwords",
+          "required": true
+        },
+        {
+          "id": "secret_6",
+          "type": "security",
+          "severity": "high",
+          "category": "Hardcoded Secrets",
+          "title": "OAuth client secrets",
+          "line_start": 42,
+          "line_end": 47,
+          "description": "Google and GitHub OAuth secrets exposed",
+          "required": false
+        },
+        {
+          "id": "secret_7",
+          "type": "security",
+          "severity": "high",
+          "category": "Weak Authentication",
+          "title": "Hardcoded admin password",
+          "line_start": 96,
+          "line_end": 96,
+          "description": "Default admin password 'admin123'",
+          "required": true
+        },
+        {
+          "id": "secret_8",
+          "type": "security",
+          "severity": "high",
+          "category": "Hardcoded Secrets",
+          "title": "Hardcoded database credentials in DatabaseConnection",
+          "line_start": 120,
+          "line_end": 125,
+          "description": "Production database credentials in source",
+          "required": false
+        },
+        {
+          "id": "secret_9",
+          "type": "security",
+          "severity": "medium",
+          "category": "Hardcoded Secrets",
+          "title": "Debug/test credentials in production code",
+          "line_start": 163,
+          "line_end": 165,
+          "description": "Test credentials should not be in production code",
+          "required": false
+        }
+      ],
+      "total_security": 9,
+      "total_bugs": 0,
+      "minimum_required": 5
+    },
+    "xss_vulnerability.py": {
+      "expected_findings": [
+        {
+          "id": "xss_1",
+          "type": "security",
+          "severity": "high",
+          "category": "XSS",
+          "title": "XSS in TemplateEngine.render()",
+          "line_start": 24,
+          "line_end": 25,
+          "description": "String substitution without HTML escaping",
+          "required": true
+        },
+        {
+          "id": "xss_2",
+          "type": "security",
+          "severity": "high",
+          "category": "XSS",
+          "title": "XSS in render_profile() - multiple fields",
+          "line_start": 33,
+          "line_end": 44,
+          "description": "User name, bio, location, website all unescaped",
+          "required": true
+        },
+        {
+          "id": "xss_3",
+          "type": "security",
+          "severity": "high",
+          "category": "XSS",
+          "title": "XSS in render_profile_card()",
+          "line_start": 48,
+          "line_end": 55,
+          "description": "avatar_url could contain javascript: protocol, other fields unescaped",
+          "required": true
+        },
+        {
+          "id": "xss_4",
+          "type": "security",
+          "severity": "high",
+          "category": "XSS",
+          "title": "XSS in render_comment() - author and content",
+          "line_start": 73,
+          "line_end": 79,
+          "description": "Comment content directly in HTML",
+          "required": true
+        },
+        {
+          "id": "xss_5",
+          "type": "security",
+          "severity": "high",
+          "category": "XSS",
+          "title": "XSS in render_comment_form() - post_id in action",
+          "line_start": 83,
+          "line_end": 89,
+          "description": "post_id could break out of attribute",
+          "required": false
+        },
+        {
+          "id": "xss_6",
+          "type": "security",
+          "severity": "high",
+          "category": "XSS",
+          "title": "XSS in render_search_page() - reflected query",
+          "line_start": 118,
+          "line_end": 121,
+          "description": "Search query reflected without escaping",
+          "required": true
+        },
+        {
+          "id": "xss_7",
+          "type": "security",
+          "severity": "high",
+          "category": "XSS",
+          "title": "XSS in render_search_suggestions() - onclick injection",
+          "line_start": 141,
+          "line_end": 142,
+          "description": "Suggestion in onclick handler can escape quotes",
+          "required": true
+        },
+        {
+          "id": "xss_8",
+          "type": "security",
+          "severity": "high",
+          "category": "XSS",
+          "title": "XSS in render_404() - path reflection",
+          "line_start": 151,
+          "line_end": 158,
+          "description": "URL path reflected in page",
+          "required": true
+        },
+        {
+          "id": "xss_9",
+          "type": "security",
+          "severity": "high",
+          "category": "XSS",
+          "title": "XSS in render_error() - error message",
+          "line_start": 162,
+          "line_end": 170,
+          "description": "Error message could contain user input",
+          "required": false
+        }
+      ],
+      "total_security": 9,
+      "total_bugs": 0,
+      "minimum_required": 6
+    }
+  },
+  "evaluation_guidelines": {
+    "scoring": {
+      "critical_finding": 10,
+      "high_finding": 7,
+      "medium_finding": 4,
+      "low_finding": 2,
+      "false_positive_penalty": -5
+    },
+    "thresholds": {
+      "minimum_required_findings_per_file": "See individual file 'minimum_required'",
+      "acceptable_false_positive_rate": 0.15,
+      "required_fix_accuracy": 0.70
+    },
+    "notes": [
+      "Findings marked 'required: true' should definitely be caught",
+      "Partial credit for correct category but wrong specific issue",
+      "Credit for identifying patterns even if line numbers are slightly off",
+      "Bonus for finding issues not in this list (if valid)"
+    ]
+  }
+}
