@@ -1,7 +1,17 @@
 """
-Tool implementations for agents.
+Tools module - Provides code analysis tools for agents.
 """
 
-from .code_tools import read_file, execute_code
+from .code_tools import (
+    CodeTools,
+    ToolResult,
+    TOOL_DEFINITIONS,
+    execute_tool
+)
 
-__all__ = ["read_file", "execute_code"]
+__all__ = [
+    "CodeTools",
+    "ToolResult",
+    "TOOL_DEFINITIONS",
+    "execute_tool"
+]

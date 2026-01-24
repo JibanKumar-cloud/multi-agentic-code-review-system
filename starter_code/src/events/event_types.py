@@ -1,177 +1,292 @@
 """
-Event type definitions for the multi-agent system.
-
-See STREAMING_EVENTS_SPEC.md for full event schema documentation.
+Event bus for publishing and subscribing to events.
+Supports both sync and async operations, WebSocket broadcasting.
 """
 
+import asyncio
+import json
+import logging
+from typing import Callable, Dict, List, Optional, Set, Any
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
-from typing import Any, Dict, Optional
-import uuid
 
+from .event_types import Event, EventType
 
-class EventType(Enum):
-    """Types of events in the system."""
-
-    # Planning events
-    PLAN_CREATED = "plan_created"
-    PLAN_STEP_STARTED = "plan_step_started"
-    PLAN_STEP_COMPLETED = "plan_step_completed"
-
-    # Agent lifecycle events
-    AGENT_STARTED = "agent_started"
-    AGENT_COMPLETED = "agent_completed"
-    AGENT_ERROR = "agent_error"
-
-    # Thinking/reasoning events
-    THINKING = "thinking"
-    THINKING_COMPLETE = "thinking_complete"
-
-    # Tool events
-    TOOL_CALL_START = "tool_call_start"
-    TOOL_CALL_RESULT = "tool_call_result"
-
-    # Finding events
-    FINDING_DISCOVERED = "finding_discovered"
-    FIX_PROPOSED = "fix_proposed"
-    FIX_VERIFIED = "fix_verified"
-
-    # Communication events
-    AGENT_MESSAGE = "agent_message"
-    FINDINGS_CONSOLIDATED = "findings_consolidated"
-    FINAL_REPORT = "final_report"
+logger = logging.getLogger(__name__)
 
 
 @dataclass
-class Event:
+class Subscriber:
+    """Represents a subscriber to the event bus."""
+    callback: Callable[[Event], Any]
+    event_types: Optional[Set[EventType]] = None  # None means all events
+    agent_filter: Optional[str] = None  # Filter by specific agent
+
+
+class EventBus:
     """
-    Base event structure for the system.
-
-    All events follow this structure for consistency and
-    easy serialization for streaming.
+    Central event bus for the multi-agent system.
+    
+    Features:
+    - Pub/sub pattern for event distribution
+    - Async queue for streaming to UI
+    - Support for filtering by event type and agent
+    - WebSocket broadcast support
+    - Event history for late subscribers
     """
-
-    event_type: EventType
-    agent_id: str
-    data: Dict[str, Any]
-    timestamp: datetime = field(default_factory=datetime.utcnow)
-    event_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    correlation_id: Optional[str] = None  # For linking related events
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert event to dictionary for JSON serialization."""
-        return {
-            "event_id": self.event_id,
-            "event_type": self.event_type.value,
-            "agent_id": self.agent_id,
-            "timestamp": self.timestamp.isoformat() + "Z",
-            "correlation_id": self.correlation_id,
-            "data": self.data
-        }
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Event":
-        """Create event from dictionary."""
-        return cls(
-            event_id=data.get("event_id", str(uuid.uuid4())),
-            event_type=EventType(data["event_type"]),
-            agent_id=data["agent_id"],
-            timestamp=datetime.fromisoformat(data["timestamp"].rstrip("Z")),
-            correlation_id=data.get("correlation_id"),
-            data=data.get("data", {})
+    
+    def __init__(self, maxsize: int = 10000, history_size: int = 1000):
+        """
+        Initialize the event bus.
+        
+        Args:
+            maxsize: Maximum size of the event queue
+            history_size: Number of events to keep in history
+        """
+        self._subscribers: List[Subscriber] = []
+        self._event_queue: asyncio.Queue = asyncio.Queue(maxsize=maxsize)
+        self._websockets: Set[Any] = set()
+        self._history: List[Event] = []
+        self._history_size = history_size
+        self._running = True
+        self._lock = asyncio.Lock()
+        
+        # Sync event loop for non-async contexts
+        self._sync_loop: Optional[asyncio.AbstractEventLoop] = None
+        
+    def subscribe(
+        self,
+        callback: Callable[[Event], Any],
+        event_types: Optional[List[EventType]] = None,
+        agent_filter: Optional[str] = None
+    ) -> Subscriber:
+        """
+        Subscribe to events.
+        
+        Args:
+            callback: Function to call when event is received
+            event_types: Optional filter for specific event types
+            agent_filter: Optional filter for specific agent
+            
+        Returns:
+            Subscriber object for later unsubscription
+        """
+        subscriber = Subscriber(
+            callback=callback,
+            event_types=set(event_types) if event_types else None,
+            agent_filter=agent_filter
         )
+        self._subscribers.append(subscriber)
+        return subscriber
+    
+    def unsubscribe(self, subscriber: Subscriber) -> None:
+        """
+        Unsubscribe from events.
+        
+        Args:
+            subscriber: The subscriber to remove
+        """
+        if subscriber in self._subscribers:
+            self._subscribers.remove(subscriber)
+    
+    async def publish(self, event: Event) -> None:
+        """
+        Publish an event to all subscribers.
+        
+        Args:
+            event: The event to publish
+        """
+        # Add to history
+        self._history.append(event)
+        if len(self._history) > self._history_size:
+            self._history = self._history[-self._history_size:]
+        
+        # Add to queue for streaming
+        try:
+            self._event_queue.put_nowait(event)
+        except asyncio.QueueFull:
+            logger.warning("Event queue full, dropping oldest event")
+            try:
+                self._event_queue.get_nowait()
+                self._event_queue.put_nowait(event)
+            except:
+                pass
+        
+        # Notify subscribers
+        for subscriber in self._subscribers:
+            if self._should_notify(subscriber, event):
+                try:
+                    result = subscriber.callback(event)
+                    if asyncio.iscoroutine(result):
+                        await result
+                except Exception as e:
+                    logger.error(f"Error in subscriber callback: {e}")
+        
+        # Broadcast to WebSockets
+        await self._broadcast_to_websockets(event)
+    
+    def publish_sync(self, event: Event) -> None:
+        """
+        Synchronous version of publish for non-async contexts.
+        
+        Args:
+            event: The event to publish
+        """
+        # Add to history
+        self._history.append(event)
+        if len(self._history) > self._history_size:
+            self._history = self._history[-self._history_size:]
+        
+        # Try to add to queue
+        try:
+            self._event_queue.put_nowait(event)
+        except asyncio.QueueFull:
+            pass
+        
+        # Notify sync subscribers only
+        for subscriber in self._subscribers:
+            if self._should_notify(subscriber, event):
+                try:
+                    result = subscriber.callback(event)
+                    # Don't await for sync publish
+                except Exception as e:
+                    logger.error(f"Error in subscriber callback: {e}")
+        
+        # Schedule WebSocket broadcast
+        try:
+            loop = asyncio.get_running_loop()
+            asyncio.create_task(self._broadcast_to_websockets(event))
+        except RuntimeError:
+            # No running loop, skip WebSocket broadcast
+            pass
+    
+    def _should_notify(self, subscriber: Subscriber, event: Event) -> bool:
+        """Check if subscriber should be notified of this event."""
+        if subscriber.event_types and event.event_type not in subscriber.event_types:
+            return False
+        if subscriber.agent_filter and event.agent_id != subscriber.agent_filter:
+            return False
+        return True
+    
+    async def get_event(self, timeout: Optional[float] = None) -> Optional[Event]:
+        """
+        Get the next event from the queue.
+        
+        Args:
+            timeout: Optional timeout in seconds
+            
+        Returns:
+            The next event, or None if timeout
+        """
+        try:
+            if timeout:
+                return await asyncio.wait_for(
+                    self._event_queue.get(),
+                    timeout=timeout
+                )
+            return await self._event_queue.get()
+        except asyncio.TimeoutError:
+            return None
+    
+    async def stream_events(self):
+        """
+        Async generator that yields events as they come in.
+        
+        Yields:
+            Event objects as they are published
+        """
+        while self._running:
+            try:
+                event = await asyncio.wait_for(
+                    self._event_queue.get(),
+                    timeout=1.0
+                )
+                yield event
+            except asyncio.TimeoutError:
+                continue
+            except asyncio.CancelledError:
+                break
+    
+    def register_websocket(self, websocket: Any) -> None:
+        """Register a WebSocket connection for broadcasts."""
+        self._websockets.add(websocket)
+    
+    def unregister_websocket(self, websocket: Any) -> None:
+        """Unregister a WebSocket connection."""
+        self._websockets.discard(websocket)
+    
+    async def _broadcast_to_websockets(self, event: Event) -> None:
+        """Broadcast event to all connected WebSockets."""
+        if not self._websockets:
+            return
+            
+        message = event.to_json()
+        disconnected = set()
+        
+        for ws in self._websockets:
+            try:
+                await ws.send_text(message)
+            except Exception as e:
+                logger.debug(f"WebSocket send failed: {e}")
+                disconnected.add(ws)
+        
+        # Remove disconnected sockets
+        self._websockets -= disconnected
+    
+    def get_history(self, 
+                    count: Optional[int] = None,
+                    event_types: Optional[List[EventType]] = None,
+                    agent_filter: Optional[str] = None) -> List[Event]:
+        """
+        Get events from history.
+        
+        Args:
+            count: Maximum number of events to return
+            event_types: Filter by event types
+            agent_filter: Filter by agent ID
+            
+        Returns:
+            List of matching events
+        """
+        events = self._history
+        
+        if event_types:
+            events = [e for e in events if e.event_type in event_types]
+        
+        if agent_filter:
+            events = [e for e in events if e.agent_id == agent_filter]
+        
+        if count:
+            events = events[-count:]
+        
+        return events
+    
+    def clear(self) -> None:
+        """Clear all pending events from the queue."""
+        while not self._event_queue.empty():
+            try:
+                self._event_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+    
+    def clear_history(self) -> None:
+        """Clear the event history."""
+        self._history = []
+    
+    def stop(self) -> None:
+        """Stop the event bus."""
+        self._running = False
+    
+    @property
+    def queue_size(self) -> int:
+        """Get current queue size."""
+        return self._event_queue.qsize()
+    
+    @property
+    def websocket_count(self) -> int:
+        """Get number of connected WebSockets."""
+        return len(self._websockets)
 
 
-# Convenience factory functions for common events
-def create_agent_started_event(agent_id: str, agent_type: str, task: str) -> Event:
-    """Create an agent_started event."""
-    return Event(
-        event_type=EventType.AGENT_STARTED,
-        agent_id=agent_id,
-        data={
-            "agent_type": agent_type,
-            "task": task,
-            "status": "running"
-        }
-    )
-
-
-def create_thinking_event(agent_id: str, chunk: str, is_complete: bool = False) -> Event:
-    """Create a thinking event."""
-    return Event(
-        event_type=EventType.THINKING_COMPLETE if is_complete else EventType.THINKING,
-        agent_id=agent_id,
-        data={
-            "chunk": chunk if not is_complete else None,
-            "full_thinking": chunk if is_complete else None
-        }
-    )
-
-
-def create_finding_event(
-    agent_id: str,
-    finding_id: str,
-    finding_type: str,
-    severity: str,
-    title: str,
-    description: str,
-    location: Dict[str, Any],
-    confidence: float = 1.0
-) -> Event:
-    """Create a finding_discovered event."""
-    return Event(
-        event_type=EventType.FINDING_DISCOVERED,
-        agent_id=agent_id,
-        data={
-            "finding_id": finding_id,
-            "type": finding_type,
-            "severity": severity,
-            "title": title,
-            "description": description,
-            "location": location,
-            "confidence": confidence
-        }
-    )
-
-
-def create_tool_call_start_event(
-    agent_id: str,
-    tool_call_id: str,
-    tool_name: str,
-    input_data: Dict[str, Any],
-    purpose: str = ""
-) -> Event:
-    """Create a tool_call_start event."""
-    return Event(
-        event_type=EventType.TOOL_CALL_START,
-        agent_id=agent_id,
-        data={
-            "tool_call_id": tool_call_id,
-            "tool_name": tool_name,
-            "input": input_data,
-            "purpose": purpose
-        }
-    )
-
-
-def create_tool_call_result_event(
-    agent_id: str,
-    tool_call_id: str,
-    tool_name: str,
-    success: bool,
-    output: Any,
-    duration_ms: int
-) -> Event:
-    """Create a tool_call_result event."""
-    return Event(
-        event_type=EventType.TOOL_CALL_RESULT,
-        agent_id=agent_id,
-        data={
-            "tool_call_id": tool_call_id,
-            "tool_name": tool_name,
-            "success": success,
-            "output": output,
-            "duration_ms": duration_ms
-        }
-    )
+# Global event bus instance
+event_bus = EventBus()

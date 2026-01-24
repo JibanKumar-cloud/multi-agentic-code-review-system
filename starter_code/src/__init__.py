@@ -1,8 +1,15 @@
 """
 Multi-Agent Code Review System
 
-This package contains the implementation of a multi-agent system
-for automated code review, security analysis, and bug detection.
+A production-grade system for analyzing Python code using coordinated AI agents.
 """
 
-__version__ = "0.1.0"
+from .config import config, Config, AgentConfig
+
+__version__ = "1.0.0"
+
+__all__ = [
+    "config",
+    "Config", 
+    "AgentConfig",
+]

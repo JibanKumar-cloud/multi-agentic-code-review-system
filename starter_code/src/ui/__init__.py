@@ -1,7 +1,7 @@
 """
-UI components for the streaming interface.
+UI module - Streaming server and web interface.
 """
 
-from .streaming_server import StreamingServer
+from .streaming_server import create_app, app, run_review
 
-__all__ = ["StreamingServer"]
+__all__ = ["create_app", "app", "run_review"]

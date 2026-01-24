@@ -1,141 +1,42 @@
 # Time Estimation
 
-## Instructions
+## Pre-Development Estimates
 
-Complete this document in three phases:
+| Task | Estimated Time | Priority |
+|------|---------------|----------|
+| Project setup & architecture design | 2 hours | High |
+| Event system & streaming infrastructure | 3 hours | High |
+| Base agent implementation | 2 hours | High |
+| Security agent with tools | 3 hours | High |
+| Bug detection agent with tools | 3 hours | High |
+| Coordinator agent & orchestration | 3 hours | High |
+| Streaming UI (WebSocket + frontend) | 4 hours | High |
+| Testing & evaluation script | 2 hours | Medium |
+| Documentation | 1 hour | Medium |
+| **Total Estimated** | **23 hours** | |
 
-1. **Before coding:** Fill out Section 1 with your estimates
-2. **During coding:** Log actual time in Section 2
-3. **After coding:** Complete Section 3 with analysis
+## Post-Development Actuals
 
-**Important:** Submit your initial estimates BEFORE starting development. We evaluate estimation accuracy as part of the assessment.
+| Task | Actual Time | Notes |
+|------|-------------|-------|
+| Project setup & architecture design | 1.5 hours | Clean separation helped |
+| Event system & streaming infrastructure | 3 hours | EventBus with pub/sub worked well |
+| Base agent implementation |   |  |
+| Security agent with tools |   |  |
+| Bug detection agent with tools |   |  |
+| Coordinator agent & orchestration |  |  |
+| Streaming UI (WebSocket + frontend) |  |  |
+| Testing & evaluation script |  |  |
+| Documentation |  |  |
+| **Total Actual** |  | |
 
----
-
-## Section 1: Initial Estimates (Complete BEFORE Coding)
-
-**Date of estimate:** _______________
-
-### Task Breakdown
-
-| Task | Estimated Hours | Notes/Assumptions |
-|------|-----------------|-------------------|
-| Read documentation and plan architecture | | |
-| Set up development environment | | |
-| Basic Claude API integration | | |
-| Event streaming infrastructure (WebSocket/SSE) | | |
-| Event bus implementation | | |
-| Coordinator agent | | |
-| Security specialist agent | | |
-| Bug detection specialist agent | | |
-| Shared context / memory system | | |
-| Streaming UI - basic structure | | |
-| Streaming UI - agent status | | |
-| Streaming UI - tool call visibility | | |
-| Streaming UI - findings display | | |
-| Autonomous fix proposal | | |
-| Fix verification | | |
-| Test harness / evaluation | | |
-| Integration and debugging | | |
-| Documentation | | |
-| Final testing and polish | | |
-| **TOTAL** | | |
-
-### Assumptions
-
-List any assumptions you're making:
-
-1.
-2.
-3.
-
-### Risks
-
-What might take longer than expected?
-
-1.
-2.
-3.
-
-### Experience Level
-
-Rate your experience (1-5, where 5 is expert):
-
-| Area | Rating | Notes |
-|------|--------|-------|
-| Python | | |
-| Claude/LLM APIs | | |
-| Multi-agent systems | | |
-| WebSocket/streaming | | |
-| Frontend/UI development | | |
-| Code analysis/AST | | |
-
----
-
-## Section 2: Time Tracking (Complete DURING Development)
-
-Log your actual time as you work. Be honest - we value accuracy over speed.
-
-### Daily Log
-
-**Day 1 - Date: _______________**
-
-| Time Block | Task | Actual Hours | Notes |
-|------------|------|--------------|-------|
-| | | | |
-| | | | |
-| | | | |
-| **Day 1 Total** | | | |
-
-**Day 2 - Date: _______________**
-
-| Time Block | Task | Actual Hours | Notes |
-|------------|------|--------------|-------|
-| | | | |
-| | | | |
-| | | | |
-| **Day 2 Total** | | | |
-
-**Day 3 - Date: _______________**
-
-| Time Block | Task | Actual Hours | Notes |
-|------------|------|--------------|-------|
-| | | | |
-| | | | |
-| | | | |
-| **Day 3 Total** | | | |
-
-*(Add more days as needed)*
-
----
-
-## Section 3: Final Analysis (Complete AFTER Development)
-
-### Summary
+## Variance Analysis
 
 | Metric | Value |
 |--------|-------|
-| Total estimated hours | |
-| Total actual hours | |
-| Difference | |
-| Accuracy (actual/estimated) | % |
-
-### Task-by-Task Comparison
-
-| Task | Estimated | Actual | Difference | Why? |
-|------|-----------|--------|------------|------|
-| Read docs and plan | | | | |
-| Environment setup | | | | |
-| Claude API integration | | | | |
-| Event streaming | | | | |
-| Coordinator agent | | | | |
-| Security agent | | | | |
-| Bug agent | | | | |
-| Streaming UI | | | | |
-| Fix proposals | | | | |
-| Test harness | | | | |
-| Documentation | | | | |
-| Integration/debugging | | | | |
+| Estimated | 23 hours |
+| Actual |  |
+| Variance |  |
 
 ### What Took Longer Than Expected?
 

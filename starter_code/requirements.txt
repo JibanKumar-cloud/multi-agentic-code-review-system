@@ -1,16 +1,22 @@
 # Core dependencies
-anthropic>=0.18.0
+anthropic>=0.39.0
+fastapi>=0.100.0
+python-multipart>=0.0.6
+uvicorn>=0.23.0
+websockets>=11.0
 python-dotenv>=1.0.0
 pydantic>=2.0.0
 
-# Async support
-asyncio-mqtt>=0.16.0
-aiohttp>=3.9.0
-websockets>=12.0
+# UI and streaming
+aiofiles>=23.0.0
+jinja2>=3.0.0
 
-# Testing
-pytest>=8.0.0
-pytest-asyncio>=0.23.0
+# Testing and evaluation
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
 
 # Utilities
-rich>=13.0.0  # For CLI output formatting
+rich>=13.0.0 # For CLI output formatting
+httpx>=0.24.0
+
+
