@@ -4,26 +4,26 @@
 
 | Task | Estimated Time | Priority |
 |------|---------------|----------|
-| Project setup & architecture design | 2 hours | High |
-| Event system & streaming infrastructure | 3 hours | High |
-| Base agent implementation | 2 hours | High |
-| Security agent with tools | 3 hours | High |
-| Bug detection agent with tools | 3 hours | High |
-| Coordinator agent & orchestration | 3 hours | High |
-| Streaming UI (WebSocket + frontend) | 4 hours | High |
-| Testing & evaluation script | 2 hours | Medium |
+| Project setup & architecture design | 1.5 hours | High |
+| Event system & streaming infrastructure | 2 hours | High |
+| Base agent implementation | 1.5 hours | High |
+| Security agent with tools | 2.5 hours | High |
+| Bug detection agent with tools | 2.5 hours | High |
+| Coordinator agent & orchestration | 2.5 hours | High |
+| Streaming UI (WebSocket + frontend) | 2.5 hours | High |
+| Testing & evaluation script | 1 hour | Medium |
 | Documentation | 1 hour | Medium |
-| **Total Estimated** | **23 hours** | |
+| **Total Estimated** | **17 hours** | |
 
 ## Post-Development Actuals
 
 | Task | Actual Time | Notes |
 |------|-------------|-------|
 | Project setup & architecture design | 1.5 hours | Clean separation helped |
-| Event system & streaming infrastructure | 3 hours | EventBus with pub/sub worked well |
-| Base agent implementation |   |  |
-| Security agent with tools |   |  |
-| Bug detection agent with tools |   |  |
+| Event system & streaming infrastructure | 2 hours | EventBus with pub/sub worked well |
+| Base agent implementation | 1.5 hours | As estimated |
+| Security agent with tools |  3.5 hours | Added more vulnerability patterns |
+| Bug detection agent with tools | 2.5 hours  | As estimated |
 | Coordinator agent & orchestration |  |  |
 | Streaming UI (WebSocket + frontend) |  |  |
 | Testing & evaluation script |  |  |

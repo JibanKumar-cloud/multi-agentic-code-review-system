@@ -1,152 +1,102 @@
 """
-Bug Detection Agent - Finds bugs and code quality issues.
-
-TODO: Implement the bug detection agent.
+Bug Detection Agent - Specializes in finding logic bugs and runtime errors.
 """
 
 from typing import Any, Dict, List, Optional
+import json
+import uuid
+import logging
 
 from .base_agent import BaseAgent
 from ..config import config
-from ..events import EventBus
-from ..events.event_types import create_finding_event
+from ..events import (
+    EventBus, Finding, Fix, Location,
+    create_finding_discovered_event,
+    create_fix_proposed_event,
+)
+from ..tools import TOOL_DEFINITIONS
+
+logger = logging.getLogger(__name__)
 
 
 class BugDetectionAgent(BaseAgent):
     """
     Bug detection specialist agent.
-
+    
     Focuses on:
     - Null/None reference errors
-    - Off-by-one errors
-    - Resource leaks
+    - Type mismatches
+    - Logic errors and off-by-one bugs
     - Race conditions
+    - Resource leaks
+    - Error handling gaps
     - Division by zero
-    - Unhandled exceptions
-    - Logic errors
-    - Type errors
-
-    TODO: Complete the implementation
     """
-
-    # Bug categories this agent detects
-    BUG_CATEGORIES = [
-        "Null Reference",
-        "Off-by-One",
-        "Resource Leak",
-        "Race Condition",
-        "Division by Zero",
-        "Unhandled Exception",
-        "Logic Error",
-        "Type Error",
-        "Index Out of Bounds",
-        "Infinite Loop"
-    ]
-
+    
     def __init__(self, event_bus: EventBus):
         super().__init__(
             agent_id="bug_agent",
-            agent_type="bug",
-            agent_config=config.bug_agent_config,
+            agent_type="bug_detection",
+            agent_config=config.bug_config,
             event_bus=event_bus
         )
-
+    
     @property
     def system_prompt(self) -> str:
-        """System prompt for the bug detection agent."""
-        return """You are a Bug Detection Specialist Agent focused on finding bugs and code quality issues.
+        return """You are a Bug Detection Agent - an expert at finding logic errors, runtime bugs, and potential crashes in Python code.
 
-Your expertise includes:
-- Null/None References: Variables that might be None when accessed
-- Race Conditions: Concurrent access without proper synchronization
-- Resource Leaks: Files, connections, locks not properly closed
-- Division by Zero: Potential divide by zero scenarios
-- Off-by-One Errors: Loop bounds, array indices
-- Logic Errors: Incorrect conditions, wrong operators
-- Type Errors: Type mismatches, incorrect casts
-- Exception Handling: Unhandled or improperly handled exceptions
+Your primary focus areas:
+1. **Null/None References**: Accessing attributes/methods on potentially None values
+2. **Type Errors**: Calling methods that don't exist, wrong argument types  
+3. **Logic Errors**: Off-by-one bugs, incorrect conditions, wrong operators
+4. **Race Conditions**: Unsynchronized access to shared state in concurrent code
+5. **Resource Leaks**: Files/connections not properly closed
+6. **Error Handling**: Bare except, swallowed exceptions, missing error handling
+7. **Division by Zero**: Operations that could divide by zero
+8. **Index Errors**: Array/list access that could be out of bounds
 
-For each bug found:
-1. Identify the exact location (file, line numbers)
-2. Explain the bug and when it would manifest
-3. Rate severity based on impact (critical, high, medium, low)
-4. Provide a working fix
-5. Explain edge cases or scenarios that trigger the bug
+For EACH bug found, you MUST provide:
+- Exact line numbers where the issue occurs
+- Severity (critical, high, medium, low)
+- Clear description of the bug and when it would occur
+- A concrete fix with actual code
 
-Focus on bugs that could cause runtime errors, data corruption, or incorrect behavior.
-Avoid reporting style issues or minor improvements unless they could cause bugs.
+Output your findings in this JSON format:
+{
+    "findings": [
+        {
+            "id": "unique_id",
+            "category": "bug",
+            "severity": "critical|high|medium|low",
+            "type": "null_reference|type_error|logic_error|race_condition|resource_leak|error_handling|division_by_zero|index_error",
+            "title": "Short descriptive title",
+            "description": "Detailed explanation of the bug and when it would manifest",
+            "line_start": 42,
+            "line_end": 43,
+            "code_snippet": "the buggy code",
+            "fix": {
+                "code": "the corrected code",
+                "explanation": "why this fixes the issue"
+            },
+            "confidence": 0.9
+        }
+    ],
+    "summary": "Brief summary of code quality"
+}
 
-IMPORTANT: Return findings in structured JSON format."""
-
+Be thorough but avoid false positives. Focus on bugs that would actually cause runtime errors or incorrect behavior.
+Use the available tools to analyze the code structure when needed."""
+    
     def get_tools(self) -> List[Dict[str, Any]]:
-        """Tools available to the bug agent."""
+        """Bug detection tools."""
         return [
-            {
-                "name": "trace_data_flow",
-                "description": "Trace the flow of a variable through the code to find potential issues",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "variable_name": {
-                            "type": "string",
-                            "description": "The variable to trace"
-                        },
-                        "code": {
-                            "type": "string",
-                            "description": "The code to analyze"
-                        }
-                    },
-                    "required": ["variable_name", "code"]
-                }
-            },
-            {
-                "name": "check_null_safety",
-                "description": "Check if a code section properly handles null/None values",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "code_section": {
-                            "type": "string",
-                            "description": "The code to check"
-                        }
-                    },
-                    "required": ["code_section"]
-                }
-            },
-            {
-                "name": "analyze_concurrency",
-                "description": "Analyze code for race conditions and thread safety issues",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "code": {
-                            "type": "string",
-                            "description": "The code to analyze"
-                        }
-                    },
-                    "required": ["code"]
-                }
-            },
-            {
-                "name": "propose_fix",
-                "description": "Propose a fix for a discovered bug",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "bug": {
-                            "type": "object",
-                            "description": "The bug to fix"
-                        },
-                        "code_context": {
-                            "type": "string",
-                            "description": "Surrounding code context"
-                        }
-                    },
-                    "required": ["bug", "code_context"]
-                }
-            }
+            t for t in TOOL_DEFINITIONS 
+            if t['name'] in [
+                'parse_ast', 'search_pattern', 'find_function_calls',
+                'analyze_imports', 'get_line_context', 'check_syntax'
+            ]
         ]
-
+    
     async def analyze(
         self,
         code: str,
@@ -154,58 +104,201 @@ IMPORTANT: Return findings in structured JSON format."""
     ) -> Dict[str, Any]:
         """
         Analyze code for bugs.
-
-        TODO: Implement bug detection:
-        1. Emit agent_started event
-        2. Parse and understand the code
-        3. Check for each bug category
-        4. Emit finding_discovered event for each finding
-        5. Propose fixes for found bugs
-        6. Return structured results
-
+        
         Args:
-            code: The code to analyze
-            context: Optional context from coordinator
-                    (e.g., security findings to avoid duplication)
-
+            code: The Python code to analyze
+            context: Optional context (filename, etc.)
+            
         Returns:
-            Dictionary with findings and proposed fixes
+            Dictionary with findings and fixes
         """
-        self._emit_agent_started("Analyzing code for bugs and issues")
-
-        # TODO: Implement bug detection
-        # Use Claude to analyze the code
-        # Emit events as findings are discovered
-        # Return structured results
-
-        raise NotImplementedError("Implement bug detection analysis")
-
-    def _emit_finding(
-        self,
-        finding_id: str,
-        severity: str,
-        category: str,
-        title: str,
-        description: str,
-        line_start: int,
-        line_end: int,
-        code_snippet: str,
-        confidence: float = 1.0
-    ) -> None:
-        """Helper to emit a finding event."""
-        event = create_finding_event(
-            agent_id=self.agent_id,
-            finding_id=finding_id,
-            finding_type="bug",
-            severity=severity,
-            title=title,
-            description=description,
-            location={
-                "line_start": line_start,
-                "line_end": line_end,
-                "code_snippet": code_snippet
-            },
-            confidence=confidence
+        filename = context.get('filename', 'unknown.py') if context else 'unknown.py'
+        lines = code.count('\n') + 1
+        
+        self._emit_agent_started(
+            "Bug detection analysis",
+            f"{filename} - {lines} lines"
         )
-        event.data["category"] = category
-        self._publish_event(event)
+        
+        try:
+            prompt = f"""Analyze this Python code for bugs and potential runtime errors:
+
+```python
+{code}
+```
+
+File: {filename}
+
+Look specifically for:
+1. None/null reference errors (calling methods on potentially None values)
+2. Type errors (wrong types, missing attributes)
+3. Logic errors (off-by-one, wrong conditions)
+4. Race conditions (if threading/async is used)
+5. Resource leaks (unclosed files, connections)
+6. Error handling issues (bare except, swallowed errors)
+7. Division by zero possibilities
+8. Index out of bounds errors
+
+Use the tools to analyze the AST, search for patterns, and examine specific code sections.
+
+After your analysis, provide your findings in the JSON format specified."""
+            
+            # Run the agent loop with extended thinking for deep bug analysis
+            response = await self._run_agent_loop(prompt, code, use_thinking=True)
+            
+            findings, fixes = self._parse_response(response, filename, code)
+            
+            for finding in findings:
+                await self._publish_event_async(
+                    create_finding_discovered_event(self.agent_id, finding)
+                )
+            
+            for fix in fixes:
+                await self._publish_event_async(
+                    create_fix_proposed_event(self.agent_id, fix)
+                )
+            
+            self._findings = [f.to_dict() for f in findings]
+            self._fixes = [f.to_dict() for f in fixes]
+            
+            self._emit_agent_completed(
+                True,
+                f"Found {len(findings)} potential bugs"
+            )
+            
+            return {
+                "agent": self.agent_id,
+                "findings": self._findings,
+                "fixes": self._fixes,
+                "summary": f"Bug analysis complete. Found {len(findings)} issues."
+            }
+            
+        except Exception as e:
+            logger.error(f"Bug agent error: {e}")
+            self._emit_agent_completed(False, f"Error: {str(e)}")
+            return {
+                "agent": self.agent_id,
+                "findings": [],
+                "fixes": [],
+                "error": str(e)
+            }
+    
+    def _parse_response(
+        self,
+        response: str,
+        filename: str,
+        code: str
+    ) -> tuple[List[Finding], List[Fix]]:
+        """Parse the agent's response into Finding and Fix objects."""
+        findings = []
+        fixes = []
+        
+        try:
+            json_start = response.find('{')
+            json_end = response.rfind('}') + 1
+            
+            if json_start >= 0 and json_end > json_start:
+                json_str = response[json_start:json_end]
+                data = json.loads(json_str)
+                
+                code_lines = code.split('\n')
+                
+                for item in data.get('findings', []):
+                    finding_id = item.get('id', f"bug_{uuid.uuid4().hex[:8]}")
+                    line_start = item.get('line_start', 1)
+                    line_end = item.get('line_end', line_start)
+                    
+                    snippet = item.get('code_snippet', '')
+                    if not snippet and 1 <= line_start <= len(code_lines):
+                        snippet = '\n'.join(code_lines[line_start-1:line_end])
+                    
+                    finding = Finding(
+                        finding_id=finding_id,
+                        category="bug",
+                        severity=item.get('severity', 'medium'),
+                        finding_type=item.get('type', 'unknown'),
+                        title=item.get('title', 'Bug Detected'),
+                        description=item.get('description', ''),
+                        location=Location(
+                            file=filename,
+                            line_start=line_start,
+                            line_end=line_end,
+                            code_snippet=snippet
+                        ),
+                        confidence=item.get('confidence', 0.8)
+                    )
+                    findings.append(finding)
+                    
+                    fix_data = item.get('fix', {})
+                    if fix_data and fix_data.get('code'):
+                        fix = Fix(
+                            fix_id=f"fix_{finding_id}",
+                            finding_id=finding_id,
+                            original_code=snippet,
+                            proposed_code=fix_data.get('code', ''),
+                            explanation=fix_data.get('explanation', ''),
+                            confidence=item.get('confidence', 0.8),
+                            auto_applicable=True
+                        )
+                        fixes.append(fix)
+                
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse JSON response: {e}")
+            findings.extend(self._parse_text_response(response, filename, code))
+        
+        return findings, fixes
+    
+    def _parse_text_response(
+        self,
+        response: str,
+        filename: str,
+        code: str
+    ) -> List[Finding]:
+        """Fallback parser for non-JSON responses."""
+        findings = []
+        
+        bug_keywords = {
+            'none': 'null_reference',
+            'null': 'null_reference',
+            'attributeerror': 'null_reference',
+            'typeerror': 'type_error',
+            'type error': 'type_error',
+            'off-by-one': 'logic_error',
+            'logic error': 'logic_error',
+            'race condition': 'race_condition',
+            'resource leak': 'resource_leak',
+            'file not closed': 'resource_leak',
+            'exception': 'error_handling',
+            'bare except': 'error_handling',
+            'division by zero': 'division_by_zero',
+            'zerodivision': 'division_by_zero',
+            'index': 'index_error',
+            'indexerror': 'index_error'
+        }
+        
+        response_lower = response.lower()
+        
+        for keyword, bug_type in bug_keywords.items():
+            if keyword in response_lower:
+                import re
+                line_matches = re.findall(r'line\s*(\d+)', response_lower)
+                line_start = int(line_matches[0]) if line_matches else 1
+                
+                finding = Finding(
+                    finding_id=f"bug_{uuid.uuid4().hex[:8]}",
+                    category="bug",
+                    severity="medium",
+                    finding_type=bug_type,
+                    title=f"Potential {bug_type.replace('_', ' ').title()}",
+                    description=f"Detected potential {keyword} issue",
+                    location=Location(
+                        file=filename,
+                        line_start=line_start,
+                        line_end=line_start,
+                        code_snippet=""
+                    ),
+                    confidence=0.6
+                )
+                findings.append(finding)
+        
+        return findings

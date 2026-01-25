@@ -1,5 +1,5 @@
 """
-Agent implementations for code review.
+Agents module - Multi-agent code review system.
 """
 
 from .base_agent import BaseAgent
@@ -11,5 +11,5 @@ __all__ = [
     "BaseAgent",
     "CoordinatorAgent",
     "SecurityAgent",
-    "BugDetectionAgent"
+    "BugDetectionAgent",
 ]
