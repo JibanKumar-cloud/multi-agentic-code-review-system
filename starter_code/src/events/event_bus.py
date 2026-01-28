@@ -142,7 +142,7 @@ class EventBus:
             self._event_queue.put_nowait(event)
         except asyncio.QueueFull:
             pass
-    
+        
         # Notify sync subscribers only
         for subscriber in self._subscribers:
             if self._should_notify(subscriber, event):

@@ -88,18 +88,23 @@ class Location:
 class Finding:
     """A code review finding."""
     finding_id: str
+    step_id: str
     category: str
+    agent_id: str
     severity: str
     finding_type: str
     title: str
     description: str
     location: Location
     confidence: float = 1.0
+
     
     def to_dict(self) -> Dict[str, Any]:
         return {
             "finding_id": self.finding_id,
+            "step_id": self.step_id,
             "category": self.category,
+            "agent_id": self.agent_id,
             "severity": self.severity,
             "type": self.finding_type,
             "title": self.title,
@@ -114,6 +119,7 @@ class Fix:
     """A proposed fix for a finding."""
     fix_id: str
     finding_id: str
+    agent_id: str
     original_code: str
     proposed_code: str
     explanation: str
@@ -126,6 +132,7 @@ class Fix:
         return {
             "fix_id": self.fix_id,
             "finding_id": self.finding_id,
+            "agent_id": self.agent_id,
             "original_code": self.original_code,
             "proposed_code": self.proposed_code,
             "explanation": self.explanation,

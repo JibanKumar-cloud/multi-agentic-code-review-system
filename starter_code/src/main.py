@@ -13,9 +13,12 @@ import sys
 import json
 from pathlib import Path
 
+import uvicorn
+from .ui import app
+
 from .config import config
 from .events import EventBus
-from .agents import CoordinatorAgent, SecurityAgent, BugDetectionAgent
+from .agents.code_review_workflow import CodeReviewWorkflow
 
 
 async def analyze_file(file_path: str, output_json: bool = False) -> dict:
@@ -61,14 +64,8 @@ async def analyze_file(file_path: str, output_json: bool = False) -> dict:
         
         event_bus.subscribe(print_event)
     
-    # Initialize agents
-    coordinator = CoordinatorAgent(event_bus)
-    security_agent = SecurityAgent(event_bus)
-    bug_agent = BugDetectionAgent(event_bus)
-    
-    # Register specialists with coordinator
-    coordinator.register_specialist("security", security_agent)
-    coordinator.register_specialist("bug", bug_agent)
+
+    code_review_wf = CodeReviewWorkflow(event_bus)
     
     # Run analysis
     if not output_json:
@@ -76,7 +73,7 @@ async def analyze_file(file_path: str, output_json: bool = False) -> dict:
         print(f"Analyzing: {file_path}")
         print(f"{'='*60}")
     
-    results = await coordinator.analyze(code, context={"filename": str(path)})
+    results = await code_review_wf.review_code(code, filename={"filename": str(path)})
     
     if not output_json:
         print(f"\n{'='*60}")
@@ -104,8 +101,6 @@ async def run_server(host: str = "0.0.0.0", port: int = 8080):
         host: Host to bind to
         port: Port to bind to
     """
-    import uvicorn
-    from .ui import app
     
     print(f"\n🚀 Starting Multi-Agent Code Review Server")
     print(f"   URL: http://{host}:{port}")

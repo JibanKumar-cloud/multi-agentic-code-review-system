@@ -1,0 +1,10 @@
+.DS_Store
+.env
+
+starter_code/src/__pycache__/
+starter_code/src/agents/__pycache__/
+starter_code/src/events/__pycache__/
+starter_code/src/tools/__pycache__/
+starter_code/src/ui/__pycache__/
+
+venv/

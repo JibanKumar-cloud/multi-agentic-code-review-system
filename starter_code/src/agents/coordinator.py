@@ -1,30 +1,41 @@
 """
 Coordinator Agent - Orchestrates the multi-agent code review.
-
-TODO: Implement the coordinator agent.
 """
 
 from typing import Any, Dict, List, Optional
+import time
+import logging
 
+from ..agents.state import ReviewState
 from .base_agent import BaseAgent
 from ..config import config
-from ..events import EventBus, EventType, Event
+
+from ..events import (
+    EventBus, PlanStep,
+    create_plan_created_event,
+    create_plan_step_started_event,
+    create_plan_step_completed_event,
+    create_mode_changed_event,
+    create_findings_consolidated_event,
+    create_final_report_event)
+from ..utility import parse_plan, emit_agent_started, emit_agent_completed
+from ..tools import CodeTools
+
+logger = logging.getLogger(__name__)
 
 
 class CoordinatorAgent(BaseAgent):
     """
     Coordinator agent that orchestrates the code review process.
-
+    
     Responsibilities:
     - Create analysis plan
     - Delegate to specialist agents
     - Consolidate findings
     - Manage fix verification workflow
     - Generate final report
-
-    TODO: Complete the implementation
     """
-
+    
     def __init__(self, event_bus: EventBus):
         super().__init__(
             agent_id="coordinator",
@@ -32,192 +43,229 @@ class CoordinatorAgent(BaseAgent):
             agent_config=config.coordinator_config,
             event_bus=event_bus
         )
-
-        # Track registered specialist agents
-        self._specialists: Dict[str, BaseAgent] = {}
-
-        # Current analysis state
+    
         self._current_plan: Optional[Dict[str, Any]] = None
         self._all_findings: List[Dict[str, Any]] = []
-
+        self._all_fixes: List[Dict[str, Any]] = []
+        self._review_id: str = ""
+    
     @property
     def system_prompt(self) -> str:
-        """System prompt for the coordinator."""
-        return """You are a Coordinator Agent responsible for orchestrating a multi-agent code review system.
+        pass
+
+        
+    def get_prompt(self, state: ReviewState) -> str:
+        # Analysing Code
+        code = state["code"]
+        filename = state["filename"]
+        ast_result = CodeTools.parse_ast(code)
+        imports_result = CodeTools.analyze_imports(code)
+        
+        functions = ast_result.output.get('functions', []) if ast_result.success else []
+        imports = ast_result.output.get('imports', []) if ast_result.success else []
+        line_count = len(code.split('\n'))
+        dangerous_imports = imports_result.output.get('potentially_dangerous', []) if imports_result.success else []
+        prompt = f"""You are a Coordinator Agent responsible for orchestrating a multi-agent code review system.
 
 Your responsibilities:
-1. Analyze submitted code to create an analysis plan
-2. Delegate security analysis to the Security Agent
-3. Delegate bug detection to the Bug Detection Agent
-4. Consolidate and deduplicate findings from all agents
-5. Prioritize fixes based on severity and impact
-6. Verify proposed fixes don't introduce new issues
-7. Generate a comprehensive final report
+1. Analyze submitted code to understand its structure and purpose
+2. Create an analysis plan determining which specialists to involve
+3. Consolidate findings from all agents
+4. Remove duplicates and merge related findings
+5. Prioritize by severity
+6. Generate a comprehensive final report
 
-When creating a plan:
-- Consider the code's complexity and purpose
-- Identify which specialist agents should analyze it
-- Define the order of analysis (security often first)
+You coordinate the Security Agent and Bug Detection Agent. Always ensure thorough analysis while avoiding redundant work.
 
-When consolidating findings:
-- Remove duplicate findings
-- Merge related issues
-- Rank by severity (critical > high > medium > low)
-- Group by category for readability
+**Code Info:**
+- File: {filename}
+- Lines: {line_count}
+- Functions: {', '.join(functions) if functions else 'None detected'}
+- Imports: {', '.join(imports[:10]) if imports else 'None'}
+- Dangerous imports: {', '.join(d.get('module', '') for d in dangerous_imports) if dangerous_imports else 'None'}
 
-Always emit appropriate events so the UI can track progress."""
+**Available Agents:**
+1. security:- Finds SQL injection, XSS, command injection, 
+              hardcoded secrets, insecure deserialization
+2. bug:- Finds null references, race conditions, Division by zero, logic errors, 
+         type errors, error handling issues, Index out of bounds errors
+OR you can add your one discovered focus area to look for agent.
 
+**Your Task:**
+Create an analysis plan. Respond with JSON only:
+
+```json
+{{
+    "analysis_summary": "Brief description of what you see in this code",
+    "risk_level": "low|medium|high|critical",
+    "steps": [
+        {{
+            "step_id": "step_1",
+            "agent": "security",
+            "description": "What this step will check",
+            "focus_areas": ["specific", "things", "to check"],
+            "priority": 1
+        }}
+    ]
+}}
+```
+
+Include steps for both security and bug agents if needed. Agent must be either "security" or "bug" based on task. 
+Be specific about what each should focus on based on the code as summary."""
+        return [{"role": "user", "content": prompt}]
+
+    
     def get_tools(self) -> List[Dict[str, Any]]:
-        """Tools available to the coordinator."""
-        return [
-            {
-                "name": "delegate_to_security_agent",
-                "description": "Send code to the security specialist agent for vulnerability analysis",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "code": {
-                            "type": "string",
-                            "description": "The code to analyze"
-                        },
-                        "focus_areas": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Specific security areas to focus on"
-                        }
-                    },
-                    "required": ["code"]
-                }
-            },
-            {
-                "name": "delegate_to_bug_agent",
-                "description": "Send code to the bug detection agent for bug analysis",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "code": {
-                            "type": "string",
-                            "description": "The code to analyze"
-                        },
-                        "context": {
-                            "type": "object",
-                            "description": "Additional context about the code"
-                        }
-                    },
-                    "required": ["code"]
-                }
-            },
-            {
-                "name": "verify_fix",
-                "description": "Verify that a proposed fix is correct and doesn't introduce new issues",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "original_code": {
-                            "type": "string",
-                            "description": "The original buggy code"
-                        },
-                        "fixed_code": {
-                            "type": "string",
-                            "description": "The proposed fix"
-                        },
-                        "finding": {
-                            "type": "object",
-                            "description": "The finding being fixed"
-                        }
-                    },
-                    "required": ["original_code", "fixed_code", "finding"]
-                }
-            }
-        ]
-
-    def register_specialist(self, agent_type: str, agent: BaseAgent) -> None:
-        """
-        Register a specialist agent.
-
-        Args:
-            agent_type: Type of specialist (security, bug)
-            agent: The agent instance
-        """
-        self._specialists[agent_type] = agent
-
-    async def analyze(
-        self,
-        code: str,
-        context: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        """Coordinator tools."""
+        return []  # Coordinator primarily orchestrates, doesn't need analysis tools
+    
+    async def analyze(self, state: ReviewState) -> Dict[str, Any]:
         """
         Orchestrate the full code analysis.
-
-        TODO: Implement the coordination workflow:
-        1. Create analysis plan
-        2. Emit plan_created event
-        3. Execute plan steps (delegate to specialists)
-        4. Collect and consolidate findings
-        5. Propose fixes for critical/high severity issues
-        6. Verify fixes
-        7. Generate final report
-
-        Args:
-            code: The code to analyze
-            context: Optional additional context
-
-        Returns:
-            Complete analysis results with findings and fixes
         """
-        self._emit_agent_started("Orchestrating code review")
+        
+        if state.get("phase") == "planning" and state.get("bug_agent_completed") and state.get("security_agent_completed"):
+            # flip phase via returned update
+            if state.get("plan"):  # ensure planning already created a plan
+                return await self._coordinator_consolidating({**state, "phase": "consolidating"})
+        return await self._coordinator_planning(state)
+    
+    
+    async def _coordinator_planning(self, state: ReviewState) -> Dict[str, Any]:
+        """Create a detailed analysis plan using Claude LLM."""
 
-        # TODO: Implement coordination logic
-        # This is the main entry point for the analysis workflow
+        # Getting Prompt
+        messages = self.get_prompt(state)
 
-        raise NotImplementedError("Implement the coordinator's analyze method")
+        # Emiting Agent Starting Events
+        await emit_agent_started(self.event_bus, self.agent_id, "Creating execution plan", state["filename"], "thinking") 
+   
+        # Ask Claude to generate the execution plan
+        try:
+            # Call Claude to generate the plan
+            response =  await self._call_claude(messages=messages, 
+                                                agent_id=self.agent_id, 
+                                                code="",
+                                                tools=None,  
+                                                agent_run_mode="streaming")
 
-    async def _create_plan(self, code: str) -> Dict[str, Any]:
+            # Parse the response
+            response_text = response["text"]
+            plan = parse_plan(response_text, state["review_id"])
+
+            # Build steps from Claude's plan
+            # Emit plan to UI
+            plan_steps = []
+            for i, s in enumerate(plan.get("steps", [])):
+                plan_steps.append(
+                    PlanStep(
+                    step_id=s.get("step_id", f"step_{i}"),
+                    description=s.get("description", "Analysis"),
+                    agent=s.get("agent", "coordinator"),
+                    status="pending")
+                )
+                state["step_ids"].add(s["step_id"])
+            
+
+            await self.event_bus.publish(create_plan_created_event(plan["plan_id"], plan_steps))
+            await self.event_bus.publish(create_mode_changed_event(self.agent_id, ""))
+            return {"plan": plan, "phase":"planning"}
+
+        except Exception as e:
+            logger.warning(f"Failed to generate LLM plan : {e}")
+            return {}
+      
+   
+    async def _coordinator_consolidating(self, state: ReviewState) -> ReviewState:
         """
-        Create an analysis plan for the code.
-
-        TODO: Implement plan creation
-        - Analyze code characteristics
-        - Determine which agents to involve
-        - Define analysis order
-
-        Returns:
-            Plan dictionary with steps
+        Coordinator Consolidating Phase:
+        - Merge findings from security + bug agents
+        - Deduplicate
+        - Emit final findings to UI
         """
-        raise NotImplementedError("Implement plan creation")
+        plan_id = state["plan"]["plan_id"]
+        
+        await self.event_bus.publish(create_mode_changed_event(self.agent_id, "thinking"))
+  
+        all_findings = state["security_findings"] + state["bug_findings"]
+        all_fixes = state["security_fixes"] + state["bug_fixes"]
+ 
 
-    async def _consolidate_findings(
-        self,
-        findings: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        """
-        Consolidate findings from all agents.
+        # 3) Metrics
+        by_severity = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+        by_category = {"sec": 0, "bug": 0}
 
-        TODO: Implement consolidation
-        - Remove duplicates
-        - Merge related findings
-        - Sort by severity
+        for f in all_findings:
+            f_everity = f.severity if f.severity else "medium"
+            f_category = f.category if f.category else "bug"
 
-        Returns:
-            Consolidated list of findings
-        """
-        raise NotImplementedError("Implement finding consolidation")
+            by_severity[f_everity] = by_severity.get(f_everity) + 1
+            by_category[f_category] = by_category.get(f_category) + 1
+        
+        await self.event_bus.publish(create_findings_consolidated_event(
+            len(all_fixes), by_severity, by_category, 0
+        ))
 
-    async def _verify_fix(
-        self,
-        original_code: str,
-        fixed_code: str,
-        finding: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """
-        Verify a proposed fix.
+        # 4) Creating Final report
+        duration_ms = int((time.time() - state["start_time"]) * 1000)
+        summary = f"Found {len(all_findings)} issues"
+        if by_severity["critical"] > 0:
+            summary += f" ({by_severity['critical']} critical)"
 
-        TODO: Implement fix verification
-        - Check if fix addresses the issue
-        - Check for new issues introduced
-        - Return verification result
+        final_findings_json = [f.to_dict() if hasattr(f, "to_dict") else f for f in all_findings]
+        final_fixes_json = [fx.to_dict() if hasattr(fx, "to_dict") else fx for fx in all_fixes]
 
-        Returns:
-            Verification result
-        """
-        raise NotImplementedError("Implement fix verification")
+        
+        final_report = {
+            "review_id": state["review_id"],
+            "summary": summary,
+            "plan": state["plan"],
+            "findings": final_findings_json,
+            "fixes": final_fixes_json,
+            "metrics": {
+                "total_findings": len(final_findings_json),
+                "by_severity": by_severity,
+                "fixes_proposed": len(final_fixes_json),
+                "duration_ms": duration_ms
+            }
+        }
+
+
+        # Completion events
+        # await self.event_bus.publish(create_plan_step_completed_event(plan_id, "step_3", "coordinator", True, duration_ms))
+        for f in all_findings:
+            if f.step_id in state["step_ids"]:
+                agent = "coordinator"
+                agent = "secure" if f.agent_id == "secure_agent" else "bug"
+                await self.event_bus.publish(create_plan_step_started_event(plan_id, f.step_id, agent))
+                await self.event_bus.publish(create_plan_step_completed_event(plan_id, f.step_id, agent, True, duration_ms))
+
+        await self.event_bus.publish(create_final_report_event(
+            state["review_id"], "completed", summary, final_findings_json, final_fixes_json,
+            {"total": len(final_findings_json), "by_severity": by_severity, "fixes_proposed": len(final_fixes_json), "duration_ms": duration_ms}
+        ))
+
+        # Emiting Agent Completion Events
+        await emit_agent_completed(
+                        event_bus=self.event_bus,
+                        agent_id=self.agent_id,
+                        success=True, 
+                        findings_count=len(final_findings_json),
+                        fixes_proposed=len(final_fixes_json),
+                        duration_ms=duration_ms,
+                        summary=f"Found {len(final_findings_json)} issues")
+
+        return {"final_findings": all_findings,
+                "final_fixes": all_fixes,
+                "final_report": final_report,
+                "phase": "done"}
+
+
+
+            
+        
+
+
+
+    
+    
