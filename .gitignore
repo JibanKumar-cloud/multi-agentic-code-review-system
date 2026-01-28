@@ -1,6 +1,15 @@
 .DS_Store
 .env
 
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Your accidental path (spelling varies)
+starter_code/src/utillity/__pycache__/
+starter_code/src/utility/__pycache__/
+
+
 starter_code/src/__pycache__/
 starter_code/src/agents/__pycache__/
 starter_code/src/events/__pycache__/
@@ -8,3 +17,4 @@ starter_code/src/tools/__pycache__/
 starter_code/src/ui/__pycache__/
 
 venv/
+
