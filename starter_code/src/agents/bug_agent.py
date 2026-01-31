@@ -9,7 +9,16 @@ import time
 from .base_agent import BaseAgent
 from .state import ReviewState
 from ..config import config
-from ..events import EventBus
+from ..events import (
+    EventBus,
+    create_thinking_event,
+    create_thinking_complete_event
+)
+
+from ..utility.retry_errors import (
+    AgentEmptyResponseError,
+    AgentInvalidJSONError,
+    AgentMissingFieldsError)
 
 from ..utility import (parse_response_to_findings,
                        emit_agent_started,
@@ -145,20 +154,33 @@ Use the available tools to analyze the code structure when needed."""
         # Emiting Agent Starting Events
         await emit_agent_started(self.event_bus, self.agent_id, "Bug detection", "Bug detection analysis", "thinking") 
         
+        # Emit thinking events - what the agent is analyzing
+        await self._emit_thinking_stream(state)
+        
         try:
+            # raise  AgentEmptyResponseError(str(e))
             
             # Run the agent loop with extended thinking for deep bug analysis
             response =  await self._call_claude(messages=messages, 
                                                 agent_id=self.agent_id, 
                                                 code=code, 
-                                                tools=tools)
+                                                tools=tools) 
+
+            # Emit thinking complete
+            thinking_duration = int((time.time() - start_time) * 1000)
+            await self.event_bus.publish(create_thinking_complete_event(
+                self.agent_id,
+                full_thinking=None,
+                duration_ms=thinking_duration
+            ))
 
             finding_to_fix_map = await parse_response_to_findings(
                                         event_bus=self.event_bus,
                                         response=response, 
                                         code=code,
                                         filename=filename, 
-                                        agent_id=self.agent_id)
+                                        agent_id=self.agent_id,
+                                        plan_id=state["plan"]["plan_id"])
            
             findings = [f[0]  for f in finding_to_fix_map.values()]
             fixes = [f[1]  for f in finding_to_fix_map.values()]
@@ -182,13 +204,63 @@ Use the available tools to analyze the code structure when needed."""
             
         except Exception as e:
             print(f"Error: {e}")
-            await emit_agent_completed(self.event_bus, self.agent_id, 
-                                       False, 0, 0, 0, f"Error: {str(e)}")
-            return {
-                "bug_agent_completed": False,
-                "bug_findings": [],
-                "bug_fixes": []
-            }
+            raise  AgentEmptyResponseError(str(e))
+
+    async def _emit_thinking_stream(self, state: ReviewState) -> None:
+        """Emit thinking events to show agent's analysis process."""
+        import asyncio
+        
+        plan = state.get("plan", {})
+        code = state["code"]
+        
+        # Initial thinking
+        await self.event_bus.publish(create_thinking_event(
+            self.agent_id,
+            "Analyzing code for potential bugs and runtime errors... "
+        ))
+        await asyncio.sleep(0.1)
+        
+        # Analyze what we're looking for based on plan
+        focus_areas = []
+        for step in plan.get("steps", []):
+            if step.get("agent") == "bug":
+                focus_areas.extend(step.get("focus_areas", []))
+        
+        if focus_areas:
+            await self.event_bus.publish(create_thinking_event(
+                self.agent_id,
+                f"Focus areas: {', '.join(focus_areas[:5])}. "
+            ))
+            await asyncio.sleep(0.1)
+        
+        # Code analysis observations
+        code_lower = code.lower()
+        observations = []
+        
+        if ".get(" not in code and "[" in code:
+            observations.append("Direct indexing without bounds checking - potential IndexError")
+        if "None" in code or "null" in code_lower:
+            observations.append("None references detected - checking for null pointer issues")
+        if "thread" in code_lower or "async" in code_lower or "lock" in code_lower:
+            observations.append("Concurrent code patterns - checking for race conditions")
+        if "/" in code and "0" in code:
+            observations.append("Division operations found - checking for division by zero")
+        if "try" not in code_lower and ("open(" in code or "connect" in code_lower):
+            observations.append("I/O operations without error handling detected")
+        if ".upper()" in code or ".lower()" in code or ".strip()" in code:
+            observations.append("String operations on potentially None values - checking null refs")
+        
+        for obs in observations[:3]:
+            await self.event_bus.publish(create_thinking_event(
+                self.agent_id,
+                f"{obs}. "
+            ))
+            await asyncio.sleep(0.1)
+        
+        await self.event_bus.publish(create_thinking_event(
+            self.agent_id,
+            "Running deep bug analysis with tools..."
+        ))
 
     
     

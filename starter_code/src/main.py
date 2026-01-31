@@ -102,7 +102,7 @@ async def run_server(host: str = "0.0.0.0", port: int = 8080):
         port: Port to bind to
     """
     
-    print(f"\n🚀 Starting Multi-Agent Code Review Server")
+    print(f"\n Starting Multi-Agent Code Review Server")
     print(f"   URL: http://{host}:{port}")
     print(f"   Press Ctrl+C to stop\n")
     
@@ -174,7 +174,7 @@ Examples:
                 # Print final finding details
                 findings = results.get('findings', [])
                 if findings:
-                    print(f"\n📋 Detailed Findings:\n")
+                    print(f"\n  Detailed Findings:\n")
                     for i, f in enumerate(findings, 1):
                         print(f"{i}. [{f.get('severity', 'medium').upper()}] {f.get('title', 'Finding')}")
                         print(f"   Category: {f.get('category', 'unknown')}")
@@ -190,7 +190,7 @@ Examples:
     except KeyboardInterrupt:
         print("\n\nShutting down...")
     except Exception as e:
-        print(f"\n❌ Error: {e}", file=sys.stderr)
+        print(f"\n Error: {e}", file=sys.stderr)
         sys.exit(1)
 
 

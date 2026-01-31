@@ -312,9 +312,14 @@ def create_agent_error_event(
     error_type: str,
     message: str,
     recoverable: bool = True,
-    will_retry: bool = False
+    will_retry: bool = False,
+    attempt: int = 0,
+    max_attempts: int = 0,
+    delay_s: int = 0
+
 ) -> Event:
     """Create an agent_error event."""
+
     return Event(
         event_type=EventType.AGENT_ERROR,
         agent_id=agent_id,
@@ -322,7 +327,11 @@ def create_agent_error_event(
             "error_type": error_type,
             "message": message,
             "recoverable": recoverable,
-            "will_retry": will_retry
+            "will_retry": will_retry,
+            "attempt": attempt,
+            "max_attempts": max_attempts,
+            "delay_s": delay_s
+
         }
     )
 

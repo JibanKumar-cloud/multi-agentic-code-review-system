@@ -10,7 +10,6 @@ import os
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass
 
-
 @dataclass
 class ToolResult:
     """Result from a tool execution."""
@@ -646,8 +645,64 @@ TOOL_DEFINITIONS = [
             },
             "required": ["code"]
         }
+    },
+    {
+        "name": "search_security_docs",
+        "description": "Search security knowledge base for vulnerability information, CWE/OWASP references, and fix patterns. Use this to get authoritative information about security issues you find.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search query describing the vulnerability (e.g., 'SQL injection python f-string', 'pickle deserialization RCE')"
+                },
+                "category": {
+                    "type": "string",
+                    "enum": ["owasp", "cwe", "python", "fixes"],
+                    "description": "Optional category filter: owasp (OWASP Top 10), cwe (CWE database), python (Python-specific), fixes (fix patterns)"
+                }
+            },
+            "required": ["query"]
+        }
     }
 ]
+
+
+def _search_security_docs_wrapper(query: str, category: Optional[str] = None) -> ToolResult:
+    """
+    Wrapper for RAG-based security documentation search.
+    
+    Args:
+        query: Search query for security knowledge
+        category: Optional category filter
+        
+    Returns:
+        ToolResult with search results
+    """
+    try:
+        from ..knowledge_base import search_security_docs
+        result = search_security_docs(query, category)
+        return ToolResult(
+            success=True,
+            output=result
+        )
+    except ImportError:
+        # Fallback if knowledge_base not available
+        return ToolResult(
+            success=True,
+            output={
+                "query": query,
+                "references": [],
+                "count": 0,
+                "note": "Knowledge base not available"
+            }
+        )
+    except Exception as e:
+        return ToolResult(
+            success=False,
+            output=None,
+            error=f"Search error: {str(e)}"
+        )
 
 
 def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> ToolResult:
@@ -680,6 +735,9 @@ def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> ToolResult:
         ),
         "execute_code": lambda i: CodeTools.execute_code(
             i["code"], i.get("timeout", 30)
+        ),
+        "search_security_docs": lambda i: _search_security_docs_wrapper(
+            i["query"], i.get("category")
         )
     }
     

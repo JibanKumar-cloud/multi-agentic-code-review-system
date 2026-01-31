@@ -9,6 +9,43 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# config.retry.py (or inside your existing config object)
+
+RETRY = {
+    "coordinator": {
+        "max_attempts": 2,
+        "retry_exceptions": [
+            "TimeoutError",
+            "ConnectionError",
+        ],
+        "retry_status_codes": [429, 500, 502, 503, 504],
+        "retry_message_substrings": [
+            "rate limit",
+            "overloaded",
+            "temporarily unavailable",
+            "timed out",
+        ],
+    },
+    "security_agent": {
+        "max_attempts": 1,
+        "retry_exceptions": [
+            "TimeoutError",
+            "ConnectionError",
+        ],
+        "retry_status_codes": [429, 500, 502, 503, 504],
+        "retry_message_substrings": ["rate limit", "overloaded"],
+    },
+    "bug_agent": {
+        "max_attempts": 1,
+        "retry_exceptions": [
+            "TimeoutError",
+            "ConnectionError",
+        ],
+        "retry_status_codes": [429, 500, 502, 503, 504],
+        "retry_message_substrings": ["rate limit", "overloaded"],
+    }
+}
+
 
 @dataclass
 class AgentConfig:
@@ -65,6 +102,8 @@ class Config:
     # Analysis Configuration
     parallel_agents: bool = True
     max_concurrent_agents: int = 3
+
+    retry = RETRY
     
     def validate(self) -> None:
         """Validate the configuration."""

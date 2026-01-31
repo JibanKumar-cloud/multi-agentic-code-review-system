@@ -77,10 +77,17 @@ python -m venv venv
 source venv/bin/activate  # or `venv\Scripts\activate` on Windows
 
 # Install dependencies
-pip install anthropic fastapi uvicorn websockets python-dotenv
+pip install -r starter_code/requirements.txt
 
 # Set up API key
 echo "ANTHROPIC_API_KEY=your-key-here" > .env
+
+# Run the server
+python -m starter_code.src.main --server --port 8080
+
+# Open the link in browser
+http://0.0.0.0:8080/
+
 ```
 
 ### 4. Build Incrementally

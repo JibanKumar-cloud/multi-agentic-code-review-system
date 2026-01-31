@@ -17,7 +17,9 @@ from ..events import (
     create_plan_step_completed_event,
     create_mode_changed_event,
     create_findings_consolidated_event,
-    create_final_report_event)
+    create_final_report_event,
+    create_thinking_event,
+    create_thinking_complete_event)
 from ..utility import parse_plan, emit_agent_started, emit_agent_completed
 from ..tools import CodeTools
 
@@ -122,58 +124,144 @@ Be specific about what each should focus on based on the code as summary."""
     async def analyze(self, state: ReviewState) -> Dict[str, Any]:
         """
         Orchestrate the full code analysis.
+        
+        Flow:
+        1. First call: phase="planning" -> creates plan -> returns phase="executing"
+        2. Second call: phase="executing" + both agents completed -> consolidate -> done
         """
         
-        if state.get("phase") == "planning" and state.get("bug_agent_completed") and state.get("security_agent_completed"):
-            # flip phase via returned update
-            if state.get("plan"):  # ensure planning already created a plan
-                return await self._coordinator_consolidating({**state, "phase": "consolidating"})
+        # Check if we're in executing phase AND both specialist agents have completed
+        # This means we've already done planning and agent execution, time to consolidate
+        if state.get("phase") == "executing" and state.get("bug_agent_completed") and state.get("security_agent_completed"):
+            # Both agents finished, move to consolidation phase
+            return await self._coordinator_consolidating({**state, "phase": "consolidating"})
+        
+        # Otherwise, we're in planning phase - create the execution plan
         return await self._coordinator_planning(state)
     
     
     async def _coordinator_planning(self, state: ReviewState) -> Dict[str, Any]:
         """Create a detailed analysis plan using Claude LLM."""
+        import asyncio
 
-        # Getting Prompt
         messages = self.get_prompt(state)
 
-        # Emiting Agent Starting Events
-        await emit_agent_started(self.event_bus, self.agent_id, "Creating execution plan", state["filename"], "thinking") 
-   
-        # Ask Claude to generate the execution plan
-        try:
-            # Call Claude to generate the plan
-            response =  await self._call_claude(messages=messages, 
-                                                agent_id=self.agent_id, 
-                                                code="",
-                                                tools=None,  
-                                                agent_run_mode="streaming")
+        await emit_agent_started(
+            self.event_bus,
+            self.agent_id,
+            "Creating execution plan",
+            state["filename"],
+            "thinking",
+        )
 
-            # Parse the response
-            response_text = response["text"]
-            plan = parse_plan(response_text, state["review_id"])
+        # Emit thinking events - what the coordinator is analyzing
+        await self._emit_planning_thoughts(state)
 
-            # Build steps from Claude's plan
-            # Emit plan to UI
-            plan_steps = []
-            for i, s in enumerate(plan.get("steps", [])):
-                plan_steps.append(
-                    PlanStep(
-                    step_id=s.get("step_id", f"step_{i}"),
+        response = await self._call_claude(
+            messages=messages,
+            agent_id=self.agent_id,
+            code="",
+            tools=None,
+            agent_run_mode="streaming",
+        )
+
+        # Emit thinking complete
+        await self.event_bus.publish(create_thinking_complete_event(
+            self.agent_id,
+            full_thinking=None,
+            duration_ms=0
+        ))
+
+        response_text = response.get("text", "") or ""
+        plan = parse_plan(response_text, state["review_id"])
+
+        plan_steps: list[PlanStep] = []
+        new_step_ids = set(state.get("step_ids", set()))
+
+        for i, s in enumerate(plan.get("steps", [])):
+            step_id = s.get("step_id") or f"step_{i+1}"
+
+            plan_steps.append(
+                PlanStep(
+                    step_id=step_id,
                     description=s.get("description", "Analysis"),
                     agent=s.get("agent", "coordinator"),
-                    status="pending")
+                    status="pending",
                 )
-                state["step_ids"].add(s["step_id"])
-            
+            )
+            new_step_ids.add(step_id)
 
-            await self.event_bus.publish(create_plan_created_event(plan["plan_id"], plan_steps))
-            await self.event_bus.publish(create_mode_changed_event(self.agent_id, ""))
-            return {"plan": plan, "phase":"planning"}
+        await self.event_bus.publish(create_plan_created_event(plan["plan_id"], plan_steps))
+        await self.event_bus.publish(create_mode_changed_event(self.agent_id, ""))
 
-        except Exception as e:
-            logger.warning(f"Failed to generate LLM plan : {e}")
-            return {}
+        # IMPORTANT: move forward, don't stay in planning
+        return {
+            "plan": plan,
+            "phase": "executing",    
+            "step_ids": new_step_ids, 
+        }
+
+    async def _emit_planning_thoughts(self, state: ReviewState) -> None:
+        """Emit thinking events during planning phase."""
+        import asyncio
+        
+        code = state["code"]
+        filename = state["filename"]
+        
+        # Analyze code structure
+        ast_result = CodeTools.parse_ast(code)
+        imports_result = CodeTools.analyze_imports(code)
+        
+        functions = ast_result.output.get('functions', []) if ast_result.success else []
+        imports_list = imports_result.output.get('imports', []) if imports_result.success else []
+        dangerous_imports = imports_result.output.get('potentially_dangerous', []) if imports_result.success else []
+        
+        # Extract module names from import dicts
+        import_names = []
+        for imp in imports_list:
+            if isinstance(imp, dict):
+                import_names.append(imp.get('module', '') or imp.get('name', ''))
+            else:
+                import_names.append(str(imp))
+        
+        # Emit thinking stream
+        await self.event_bus.publish(create_thinking_event(
+            self.agent_id,
+            f"Analyzing {filename} ({len(code.splitlines())} lines)... "
+        ))
+        await asyncio.sleep(0.1)
+        
+        if functions:
+            func_names = ', '.join(functions[:5])
+            await self.event_bus.publish(create_thinking_event(
+                self.agent_id,
+                f"Found {len(functions)} functions: {func_names}{'...' if len(functions) > 5 else ''}. "
+            ))
+            await asyncio.sleep(0.1)
+        
+        if import_names:
+            imp_display = ', '.join([n for n in import_names[:5] if n])
+            await self.event_bus.publish(create_thinking_event(
+                self.agent_id,
+                f"Detected imports: {imp_display}{'...' if len(import_names) > 5 else ''}. "
+            ))
+            await asyncio.sleep(0.1)
+        
+        if dangerous_imports:
+            modules = [d.get('module', '') or d.get('name', '') for d in dangerous_imports[:3] if isinstance(d, dict)]
+            if modules:
+                await self.event_bus.publish(create_thinking_event(
+                    self.agent_id,
+                    f"⚠️ Potentially dangerous: {', '.join(modules)}. "
+                ))
+                await asyncio.sleep(0.1)
+        
+        await self.event_bus.publish(create_thinking_event(
+            self.agent_id,
+            "Creating execution plan for security and bug agents..."
+        ))
+
+
       
    
     async def _coordinator_consolidating(self, state: ReviewState) -> ReviewState:
@@ -183,13 +271,27 @@ Be specific about what each should focus on based on the code as summary."""
         - Deduplicate
         - Emit final findings to UI
         """
+        import asyncio
+        
         plan_id = state["plan"]["plan_id"]
         
         await self.event_bus.publish(create_mode_changed_event(self.agent_id, "thinking"))
+        
+        # Emit thinking for consolidation
+        await self.event_bus.publish(create_thinking_event(
+            self.agent_id,
+            "Consolidating findings from all agents... "
+        ))
+        await asyncio.sleep(0.1)
   
         all_findings = state["security_findings"] + state["bug_findings"]
         all_fixes = state["security_fixes"] + state["bug_fixes"]
- 
+        
+        await self.event_bus.publish(create_thinking_event(
+            self.agent_id,
+            f"Merging {len(state['security_findings'])} security + {len(state['bug_findings'])} bug findings. "
+        ))
+        await asyncio.sleep(0.1)
 
         # 3) Metrics
         by_severity = {"critical": 0, "high": 0, "medium": 0, "low": 0}
@@ -201,6 +303,23 @@ Be specific about what each should focus on based on the code as summary."""
 
             by_severity[f_everity] = by_severity.get(f_everity) + 1
             by_category[f_category] = by_category.get(f_category) + 1
+        
+        await self.event_bus.publish(create_thinking_event(
+            self.agent_id,
+            f"Severity breakdown: {by_severity['critical']} critical, {by_severity['high']} high, {by_severity['medium']} medium. "
+        ))
+        await asyncio.sleep(0.1)
+        
+        await self.event_bus.publish(create_thinking_event(
+            self.agent_id,
+            "Generating final report..."
+        ))
+        
+        await self.event_bus.publish(create_thinking_complete_event(
+            self.agent_id,
+            full_thinking=None,
+            duration_ms=0
+        ))
         
         await self.event_bus.publish(create_findings_consolidated_event(
             len(all_fixes), by_severity, by_category, 0
@@ -233,12 +352,12 @@ Be specific about what each should focus on based on the code as summary."""
 
         # Completion events
         # await self.event_bus.publish(create_plan_step_completed_event(plan_id, "step_3", "coordinator", True, duration_ms))
-        for f in all_findings:
-            if f.step_id in state["step_ids"]:
-                agent = "coordinator"
-                agent = "secure" if f.agent_id == "secure_agent" else "bug"
-                await self.event_bus.publish(create_plan_step_started_event(plan_id, f.step_id, agent))
-                await self.event_bus.publish(create_plan_step_completed_event(plan_id, f.step_id, agent, True, duration_ms))
+        # for f in all_findings:
+        #     if f.step_id in state["step_ids"]:
+        #         agent = "coordinator"
+        #         agent = "secure" if f.agent_id == "secure_agent" else "bug"
+        #         await self.event_bus.publish(create_plan_step_started_event(plan_id, f.step_id, agent))
+        #         await self.event_bus.publish(create_plan_step_completed_event(plan_id, f.step_id, agent, True, duration_ms))
 
         await self.event_bus.publish(create_final_report_event(
             state["review_id"], "completed", summary, final_findings_json, final_fixes_json,

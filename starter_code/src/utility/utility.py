@@ -15,10 +15,16 @@ from ..events import (
     create_agent_started_event,
     create_agent_completed_event,
     create_fix_verified_event,
+    create_plan_step_started_event,
+    create_plan_step_completed_event,
     Fix,
     Finding,
     Location
 )
+
+from ..utility.retry_errors import AgentInvalidJSONError
+
+
 
 logger = logging.getLogger(__name__)
 
@@ -57,9 +63,10 @@ async def parse_response_to_findings(
     code: str,
     filename: str,
     agent_id: str,
+    plan_id: str
 ) -> Dict[List[Finding], List[Fix]]:
     """Parse the agent response (string OR model dict) into Finding and Fix objects."""
-
+    steps_map = set()
     finding_to_fix_map = defaultdict(list)
     # 1) Normalize to text
     if isinstance(response, dict):
@@ -86,20 +93,20 @@ async def parse_response_to_findings(
 
     # 3) Choose default IDs/titles
     category = ""
+    agent = "secure" if agent_id == "secure_agent" else "bug"
     if agent_id == "bug_agent":
         category == "bug"
         default_title = "Bug Detected"
     elif agent_id == "security_agent":
         category == "sec"
         default_title = "Security Issue"
-    else:
-        raise Exception(f"This agent is not allowed to call this tool!")
+
 
     # 4) Extract JSON object substring (best-effort)
     json_start = text.find("{")
     json_end = text.rfind("}") + 1
     if json_start < 0 or json_end <= json_start:
-        raise Exception("Agent: No JSON object found in response text")
+        raise AgentInvalidJSONError(f"Agent: Failed to parse JSON response.") 
 
     json_str = text[json_start:json_end]
 
@@ -107,7 +114,7 @@ async def parse_response_to_findings(
         data = json.loads(json_str)
     except json.JSONDecodeError as e:
         logger.warning(f"Failed to parse JSON response: {e}")
-        raise Exception(f"Agent: Failed to parse JSON response: {e}")
+        raise AgentInvalidJSONError(f"Agent: Failed to parse JSON response: {str(e)}") 
     
     code_lines = code.split("\n")
 
@@ -164,7 +171,11 @@ async def parse_response_to_findings(
             
             finding_to_fix_map[finding_id].append(finding)
             finding_to_fix_map[finding_id].append(fix)
+            if step_id not in steps_map:
+                await event_bus.publish(create_plan_step_started_event(plan_id, step_id, agent))
+                await event_bus.publish(create_plan_step_completed_event(plan_id, step_id, agent, True, 0))
             await emit_agent_finding_fixes(event_bus, agent_id, finding, fix)
+
 
     return finding_to_fix_map
 
@@ -284,5 +295,6 @@ def parse_plan(response: str, review_id: str) -> Dict[str, Any]:
         data["plan_id"] = f"plan_{review_id}"
         return data
     except Exception as e:
-        raise Exception(f"Failed to generate LLM plan, using fallback: {e}")
+        logger.info(f"Plan generation failed, Retrying ...: {e}")
+        raise AgentInvalidJSONError(f"Plan generation failed, will retry based on config...")
 

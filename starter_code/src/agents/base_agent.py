@@ -70,6 +70,41 @@ class BaseAgent(ABC):
         self._start_time: Optional[float] = None
         self._findings: List[Dict[str, Any]] = []
         self._fixes: List[Dict[str, Any]] = []
+        
+        # Token/Cost tracking
+        self._token_usage = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "api_calls": 0,
+            "estimated_cost_usd": 0.0
+        }
+    
+    # Token pricing (Claude 3.5 Sonnet)
+    TOKEN_PRICING = {
+        "input": 3.00 / 1_000_000,   # $3 per 1M input tokens
+        "output": 15.00 / 1_000_000  # $15 per 1M output tokens
+    }
+    
+    def track_tokens(self, input_tokens: int, output_tokens: int):
+        """Track token usage and calculate costs."""
+        self._token_usage["input_tokens"] += input_tokens
+        self._token_usage["output_tokens"] += output_tokens
+        self._token_usage["total_tokens"] += (input_tokens + output_tokens)
+        self._token_usage["api_calls"] += 1
+        
+        # Calculate cost
+        input_cost = input_tokens * self.TOKEN_PRICING["input"]
+        output_cost = output_tokens * self.TOKEN_PRICING["output"]
+        self._token_usage["estimated_cost_usd"] += (input_cost + output_cost)
+    
+    def get_token_usage(self) -> Dict[str, Any]:
+        """Get current token usage statistics."""
+        return {
+            **self._token_usage,
+            "agent_id": self.agent_id,
+            "agent_type": self.agent_type
+        }
     
     @property
     @abstractmethod
@@ -134,24 +169,13 @@ class BaseAgent(ABC):
         Returns:
             Dictionary with response content, any tool uses, and thinking content
         """
-        print(tools)
-        try:
-            if agent_run_mode == "parallel":
-                # Helps multiple agents run asynchronously
-                return await self._call_claude_with_parallel(messages, code, agent_id, tools, max_iteration)   
-            else:
-                 return await self._call_claude_streaming(messages, tools)
+        if agent_run_mode == "parallel":
+            # Helps multiple agents run asynchronously
+            return await self._call_claude_with_parallel(messages, code, agent_id, tools, max_iteration)   
+        else:
+             return await self._call_claude_streaming(messages, tools)
 
-        except anthropic.APIError as e:
-            logger.error(f"Claude API error: {e}")
-            await self.event_bus.publish(create_agent_error_event(
-                self.agent_id,
-                "api_error",
-                str(e),
-                recoverable=True,
-                will_retry=False
-            ))
-            
+
   
 
     async def _call_claude_streaming(
@@ -159,11 +183,21 @@ class BaseAgent(ABC):
         messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
+        """
+        Call Claude API with streaming and extended thinking support.
+        
+        Extended thinking allows Claude to reason through complex problems
+        before providing a response, improving quality for code analysis.
+        """
+        from ..events import create_thinking_event
+        import asyncio
 
         full_text = ""
+        thinking_text = ""
         tool_uses = []
         current_tool_use = None
         current_tool_input = ""
+        current_block_type = None
 
         if callable(tools):
             tools = tools()
@@ -172,39 +206,84 @@ class BaseAgent(ABC):
 
         kwargs = {
             "model": self.config.model,
-            "max_tokens": self.config.max_tokens,
+            "max_tokens": 9000, # it can be configured 
             "system": [{"type": "text", "text": "You are a code Reviewer Expert agent."}],
             "messages": messages,
+            # Enable extended thinking for deeper analysis
+            "thinking": {
+                "type": "enabled",
+                "budget_tokens": 7000  # Allow up to 10K tokens for reasoning
+            }
         }
         if tools:
             kwargs["tools"] = tools
 
+        # Get event loop for async publishing
+        loop = asyncio.get_event_loop()
+
         with self.client.messages.stream(**kwargs) as stream:
             for event in stream:
-                if not hasattr(event, "type"):
-                    continue
-
-                if event.type == "content_block_start":
-                    if hasattr(event, "content_block") and event.content_block.type == "tool_use":
-                        current_tool_use = {"id": event.content_block.id, "name": event.content_block.name, "input": {}}
-                        current_tool_input = ""
-
-                elif event.type == "content_block_delta":
-                    if hasattr(event, "delta"):
-                        if hasattr(event.delta, "text"):
-                            full_text += event.delta.text
-                        elif hasattr(event.delta, "partial_json"):
+                if hasattr(event, 'type'):
+                    # Handle content block start
+                    if event.type == 'content_block_start':
+                        current_block_type = event.content_block.type
+                        
+                        if current_block_type == 'thinking':
+                            # Starting extended thinking block
+                            pass
+                        elif current_block_type == 'text':
+                            # Starting response text block  
+                            pass
+                        elif current_block_type == 'tool_use':
+                            # Starting tool use block
+                            current_tool_use = {
+                                "id": event.content_block.id, 
+                                "name": event.content_block.name, 
+                                "input": {}
+                            }
+                            current_tool_input = ""
+                    
+                    # Handle content block delta (streaming chunks)
+                    elif event.type == 'content_block_delta':
+                        # Extended thinking chunks
+                        if hasattr(event.delta, 'thinking'):
+                            chunk = event.delta.thinking
+                            thinking_text += chunk
+                            # Stream thinking to UI
+                            if chunk:
+                                loop.call_soon(
+                                    lambda c=chunk: asyncio.ensure_future(
+                                        self.event_bus.publish(create_thinking_event(self.agent_id, c))
+                                    )
+                                )
+                        
+                        # Response text chunks
+                        elif hasattr(event.delta, 'text'):
+                            chunk = event.delta.text
+                            full_text += chunk
+                            # Stream response to UI
+                            if chunk:
+                                loop.call_soon(
+                                    lambda c=chunk: asyncio.ensure_future(
+                                        self.event_bus.publish(create_thinking_event(self.agent_id, c))
+                                    )
+                                )
+                        
+                        # Tool input JSON chunks
+                        elif hasattr(event.delta, 'partial_json'):
                             current_tool_input += event.delta.partial_json
-
-                elif event.type == "content_block_stop":
-                    if current_tool_use is not None:
-                        try:
-                            current_tool_use["input"] = json.loads(current_tool_input) if current_tool_input else {}
-                        except json.JSONDecodeError:
-                            current_tool_use["input"] = {}
-                        tool_uses.append(current_tool_use)
-                        current_tool_use = None
-                        current_tool_input = ""
+                    
+                    # Handle content block stop
+                    elif event.type == 'content_block_stop':
+                        if current_tool_use is not None:
+                            try:
+                                current_tool_use["input"] = json.loads(current_tool_input) if current_tool_input else {}
+                            except json.JSONDecodeError:
+                                current_tool_use["input"] = {}
+                            tool_uses.append(current_tool_use)
+                            current_tool_use = None
+                            current_tool_input = ""
+                        current_block_type = None
 
         stop_reason = None
         try:
@@ -213,7 +292,23 @@ class BaseAgent(ABC):
         except Exception:
             pass
 
-        return {"text": full_text, "tool_uses": tool_uses, "stop_reason": stop_reason}
+        # Track token usage including thinking tokens
+        try:
+            if hasattr(stream, "response") and stream.response:
+                usage = getattr(stream.response, "usage", None)
+                if usage:
+                    input_tokens = getattr(usage, "input_tokens", 0)
+                    output_tokens = getattr(usage, "output_tokens", 0)
+                    self.track_tokens(input_tokens, output_tokens)
+        except Exception:
+            pass
+
+        return {
+            "text": full_text, 
+            "thinking": thinking_text,
+            "tool_uses": tool_uses, 
+            "stop_reason": stop_reason
+        }
 
     
     async def _call_claude_with_parallel(self, 
@@ -227,8 +322,7 @@ class BaseAgent(ABC):
 
         first_tool = True
         count = 0
-        print("parallel")
-        print(tools)
+   
         for _ in range(max_iteration):
             response = None
 
@@ -237,24 +331,14 @@ class BaseAgent(ABC):
                 tools = None
 
             # ---- Claude call MUST be off the event loop (sync SDK) ----
-            for retry in range(3):
-                try:
-                    response = await asyncio.to_thread(
-                        self.client.messages.create,
-                        model=self.config.model,
-                        max_tokens=4096,
-                        messages=messages,
-                        tools=tools,
-                    )
-                    break
-                except Exception as e:
-                    if "overloaded" in str(e).lower() or "529" in str(e):
-                        if retry < 2:
-                            await asyncio.sleep((retry + 1) * 2)
-                        else:
-                            raise
-                    else:
-                        raise
+
+            response = await asyncio.to_thread(
+                self.client.messages.create,
+                model=self.config.model,
+                max_tokens=4096,
+                messages=messages,
+                tools=tools,
+            )
 
             if not response:
                 return ""
@@ -322,4 +406,3 @@ class BaseAgent(ABC):
         self._findings = []
         self._fixes = []
         self._start_time = None
-

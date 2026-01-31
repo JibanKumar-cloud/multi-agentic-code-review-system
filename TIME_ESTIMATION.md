@@ -7,36 +7,36 @@
 | Project setup & architecture design | 1.5 hours | High |
 | Event system & streaming infrastructure | 2 hours | High |
 | Base agent implementation | 1.5 hours | High |
-| Security agent with tools | 2.5 hours | High |
+| Security agent with tools | 3.5 hours | High |
 | Bug detection agent with tools | 2.5 hours | High |
 | Coordinator agent & orchestration | 2.5 hours | High |
-| Streaming UI (WebSocket + frontend) | 2.5 hours | High |
+| Streaming UI (WebSocket + frontend) | 3.5 hours | High |
 | Testing & evaluation script | 1 hour | Medium |
 | Documentation | 1 hour | Medium |
-| **Total Estimated** | **17 hours** | |
+| **Total Estimated** | **19 hours** | |
 
 ## Post-Development Actuals
 
 | Task | Actual Time | Notes |
 |------|-------------|-------|
 | Project setup & architecture design | 1.5 hours | Clean separation helped |
-| Event system & streaming infrastructure | 3.5 hours | EventBus with pub/sub worked well |
-| Base agent implementation | 1.5 hours | As estimated |
-| Security agent with tools | 2.5 hours | Added more vulnerability patterns |
+| Event system & streaming infrastructure | 4.5 hours | EventBus with pub/sub worked well |
+| Base agent implementation | 3 hours | As estimated |
+| Security agent with tools | 4 hours | Added more vulnerability patterns and RAG |
 | Bug detection agent with tools | 2.5 hours | As estimated |
 | Coordinator agent & orchestration | 3.5 hours | Parallel execution took extra time |
-| Streaming UI (WebSocket + frontend) | 3.5 hours | UI iterations based on feedback |
+| Streaming UI (WebSocket + frontend) | 4.5 hours | UI iterations based on feedback |
 | Testing & evaluation script | 1 hour | As estimated |
 | Documentation | 0.5 hours | README template helped |
-| **Total Actual** | **20 hours** | |
+| **Total Actual** | **25 hours** | |
 
 ## Variance Analysis
 
 | Metric | Value |
 |--------|-------|
-| Estimated | 17 hours |
-| Actual | 20 hours |
-| Variance | +3 hour (17.6% over) |
+| Estimated | 19 hours |
+| Actual | 25 hours |
+| Variance | +8 hour (30% over) |
 
 ### Reasons for Variance
 

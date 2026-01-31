@@ -8,11 +8,20 @@ import uuid
 import logging
 import time
 
+from ..utility.retry_errors import (
+    AgentEmptyResponseError,
+    AgentInvalidJSONError,
+    AgentMissingFieldsError)
+
 from .base_agent import BaseAgent
 from ..agents.state import ReviewState
 
 from ..config import config
-from ..events import EventBus
+from ..events import (
+    EventBus,
+    create_thinking_event,
+    create_thinking_complete_event
+)
 
 
 from ..utility import (emit_agent_started,
@@ -116,7 +125,7 @@ Use the available tools to analyze the code structure when needed."""
         return [
             t for t in TOOL_DEFINITIONS 
             if t['name'] in [
-                'parse_ast', 'search_pattern', 'find_function_calls',
+                'search_security_docs', 'parse_ast', 'search_pattern', 'find_function_calls',
                 'analyze_imports', 'extract_strings', 'get_line_context', 
                 'check_syntax', 'verify_fix', 'execute_code'
             ]
@@ -139,61 +148,118 @@ Use the available tools to analyze the code structure when needed."""
         start_time = time.time()
         code = state["code"]
         filename = state["filename"]
+        plan = state.get("plan", {})
 
         # Getting Prompt
         messages = self.get_prompt(state)
 
         # Getting tools
         tools = self.get_tools()
-        print(tools)
+
     
         # Emiting Agent Starting Events
         await emit_agent_started(self.event_bus, self.agent_id, "Security analysis", "", "thinking") 
 
-        try:
-    
-            # Run the agent loop with extended thinking for deep security analysis
-            response =  await self._call_claude(messages=messages,
-                                                agent_id=self.agent_id, 
-                                                code=code, 
-                                                tools=tools)    
+        # Emit thinking events - what the agent is analyzing
+        await self._emit_thinking_stream(state)
 
-            finding_to_fix_map = await parse_response_to_findings(
-                                        event_bus=self.event_bus,
-                                        response=response, 
-                                        code=code,
-                                        filename=filename, 
-                                        agent_id=self.agent_id)
+        # Run the agent loop with extended thinking for deep security analysis
+        response =  await self._call_claude(messages=messages,
+                                            agent_id=self.agent_id, 
+                                            code=code, 
+                                            tools=tools)  
+        
+        # Emit thinking complete
+        thinking_duration = int((time.time() - start_time) * 1000)
+        await self.event_bus.publish(create_thinking_complete_event(
+            self.agent_id,
+            full_thinking=None,
+            duration_ms=thinking_duration
+        ))
+     
+        finding_to_fix_map = await parse_response_to_findings(
+                                    event_bus=self.event_bus,
+                                    response=response, 
+                                    code=code,
+                                    filename=filename, 
+                                    agent_id=self.agent_id,
+                                    plan_id=state["plan"]["plan_id"])
 
-            findings = [f[0]  for f in finding_to_fix_map.values()]
-            fixes = [f[1]  for f in finding_to_fix_map.values()]
-            duration_ms = int((time.time() - start_time) * 1000)
+        findings = [f[0]  for f in finding_to_fix_map.values()]
+        fixes = [f[1]  for f in finding_to_fix_map.values()]
+        duration_ms = int((time.time() - start_time) * 1000)
 
-            # Emiting Agent Completion Events
-            await emit_agent_completed(
-                        event_bus=self.event_bus,
-                        agent_id=self.agent_id,
-                        success=True, 
-                        findings_count=len(findings),
-                        fixes_proposed=len(fixes),
-                        duration_ms=duration_ms,
-                        summary=f"Found {len(findings)} issues")
+        # Emiting Agent Completion Events
+        await emit_agent_completed(
+                    event_bus=self.event_bus,
+                    agent_id=self.agent_id,
+                    success=True, 
+                    findings_count=len(findings),
+                    fixes_proposed=len(fixes),
+                    duration_ms=duration_ms,
+                    summary=f"Found {len(findings)} issues")
 
+        
+        return {
+            "security_findings": findings,
+            "security_fixes": fixes,
+            "security_agent_completed": True}
+
+    async def _emit_thinking_stream(self, state: ReviewState) -> None:
+        """Emit thinking events to show agent's analysis process."""
+        import asyncio
+        
+        plan = state.get("plan", {})
+        code = state["code"]
+        
+        # Initial thinking
+        await self.event_bus.publish(create_thinking_event(
+            self.agent_id,
+            "Analyzing code structure for security vulnerabilities... "
+        ))
+        await asyncio.sleep(0.1)
+        
+        # Analyze what we're looking for based on plan
+        focus_areas = []
+        for step in plan.get("steps", []):
+            if step.get("agent") == "security":
+                focus_areas.extend(step.get("focus_areas", []))
+        
+        if focus_areas:
+            await self.event_bus.publish(create_thinking_event(
+                self.agent_id,
+                f"Focus areas: {', '.join(focus_areas[:5])}. "
+            ))
+            await asyncio.sleep(0.1)
+        
+        # Code analysis observations
+        code_lower = code.lower()
+        observations = []
+        
+        if "sql" in code_lower or "execute" in code_lower or "cursor" in code_lower:
+            observations.append("Database operations detected - checking for SQL injection")
+        if "os.system" in code_lower or "subprocess" in code_lower or "eval(" in code_lower:
+            observations.append("System command execution found - checking for command injection")
+        if "pickle" in code_lower or "yaml.load" in code_lower:
+            observations.append("Deserialization detected - checking for insecure deserialization")
+        if "password" in code_lower or "api_key" in code_lower or "secret" in code_lower:
+            observations.append("Sensitive data patterns found - checking for hardcoded secrets")
+        if "render" in code_lower or "html" in code_lower or "template" in code_lower:
+            observations.append("HTML/template rendering detected - checking for XSS vulnerabilities")
+        
+        for obs in observations[:3]:
+            await self.event_bus.publish(create_thinking_event(
+                self.agent_id,
+                f"{obs}. "
+            ))
+            await asyncio.sleep(0.1)
+        
+        await self.event_bus.publish(create_thinking_event(
+            self.agent_id,
+            "Running deep security analysis with tools..."
+        ))
             
-            return {
-                "security_findings": findings,
-                "security_fixes": fixes,
-                "security_agent_completed": True}
-            
-        except Exception as e:
-            logger.error(f"Security agent error: {e}")
-            emit_agent_completed(self.event_bus, self.agent_id, 
-                                 False, 0, 0, 0, f"Security agent error: {str(e)}","")
-            return {
-                "bug_agent_completed": False,
-                "bug_findings": [],
-                "bug_fixes": []
-            }
+
 
     
     

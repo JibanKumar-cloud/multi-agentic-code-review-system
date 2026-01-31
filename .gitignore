@@ -16,5 +16,6 @@ starter_code/src/events/__pycache__/
 starter_code/src/tools/__pycache__/
 starter_code/src/ui/__pycache__/
 
-venv/
+.venv/
+.vscode/
 
