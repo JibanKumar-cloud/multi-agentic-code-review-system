@@ -55,6 +55,7 @@ class AgentConfig:
     temperature: float = 0.1
     thinking_budget: int = 5000
     timeout: float = 120.0
+    
 
 
 @dataclass
