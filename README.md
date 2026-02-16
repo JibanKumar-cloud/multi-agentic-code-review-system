@@ -30,6 +30,10 @@ This system implements a multi-agent architecture where specialized AI agents co
 
 ---
 
+DEMO:
+
+![alt text](<Screenshot 2026-01-30 at 3.38.45 PM.png>)
+
 ## 📊 Evaluation Results
 
 ```
@@ -506,5 +510,3 @@ For questions or issues, please open a GitHub issue or contact the maintainer.
 
 **Built with ❤️ using Claude 3.5 Sonnet**
 
-DEMO:
-![alt text](<Screenshot 2026-01-30 at 3.38.45 PM.png>)
